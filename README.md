@@ -213,6 +213,10 @@ MIT — Open. Free. For everyone. Always.
 
 https://github.com/bnyhil31-afk/Hello-World-
 
+## Verified Principles Hash
+
+Public record: https://gist.github.com/bnyhil31-afk/6436e717a619b9a4d685f5b8709a53c8
+
 ---
 
 *Built on the belief that technology should serve people —
