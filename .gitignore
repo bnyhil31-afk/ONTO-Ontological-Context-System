@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ONTO specific
+data/memory.db
+core/principles.hash
+*.db
+*.db-shm
+*.db-wal
