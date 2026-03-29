@@ -1,0 +1,8 @@
+# ONTO — Test Requirements
+# Install these before running the test suite.
+#
+# Run this command:
+#   pip install -r requirements-test.txt
+
+pytest>=7.0
+pytest-cov>=4.0
