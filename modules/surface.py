@@ -13,6 +13,7 @@ It never pretends to know more than it does.
 This is Principles IV (Truth) and IX (Humility) — in code.
 """
 
+from typing import Any, Dict, List, Optional
 from modules import memory
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +22,15 @@ from modules import memory
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _confidence_label(score: float) -> str:
-    """Translates a 0-1 score into plain, honest language."""
+    """
+    Translates a 0.0-1.0 confidence score into plain, honest language.
+
+    Args:
+        score: Confidence value between 0.0 and 1.0.
+
+    Returns:
+        str: A plain English description of the confidence level.
+    """
     if score >= 0.85:
         return "I am quite confident about this."
     elif score >= 0.65:
@@ -33,7 +42,15 @@ def _confidence_label(score: float) -> str:
 
 
 def _weight_label(weight: float) -> str:
-    """Describes how much attention this input deserves."""
+    """
+    Describes how much attention this input deserves.
+
+    Args:
+        weight: Attention weight between 0.0 and 1.0.
+
+    Returns:
+        str: A plain English description of the attention level.
+    """
     if weight >= 0.75:
         return "This deserves careful human attention."
     elif weight >= 0.45:
@@ -46,7 +63,7 @@ def _weight_label(weight: float) -> str:
 # SAFETY RESPONSE — ALWAYS FIRST
 # ─────────────────────────────────────────────────────────────────────────────
 
-SAFETY_RESPONSES = {
+SAFETY_RESPONSES: Dict[str, str] = {
     "CRISIS": """
   ┌─────────────────────────────────────────────────────────┐
   │  I want to pause here.                                  │
@@ -96,38 +113,43 @@ SAFETY_RESPONSES = {
 # MAIN SURFACE FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-def present(enriched_package: dict) -> dict:
+def present(enriched_package: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Takes an enriched package from contextualize.py
-    and produces a clear, honest, human-readable presentation.
+    Takes an enriched package from contextualize.py and produces
+    a clear, honest, human-readable presentation.
 
-    Returns a surface dict with:
-      display     — what to show the human
-      confidence  — how sure the system is (0-1)
-      weight      — how much attention this deserves (0-1)
-      safe        — True if no safety flags
-      record_id   — permanent audit record ID
+    Args:
+        enriched_package: A package from modules/contextualize.py
+                          containing input data and context.
+
+    Returns:
+        Dict containing:
+            display     — what to show the human
+            confidence  — how sure the system is (0.0 to 1.0)
+            weight      — how much attention this deserves (0.0 to 1.0)
+            safe        — True if no safety flags were triggered
+            record_id   — permanent audit record ID
     """
-    safety = enriched_package.get("safety")
-    context = enriched_package.get("context", {})
-    input_text = enriched_package.get("clean", "")
-    input_type = enriched_package.get("input_type", "unknown")
+    safety: Optional[Dict[str, Any]] = enriched_package.get("safety")
+    context: Dict[str, Any] = enriched_package.get("context", {})
+    input_text: str = enriched_package.get("clean", "")
+    input_type: str = enriched_package.get("input_type", "unknown")
 
-    confidence = 1.0 - context.get("distance", 0.5)
-    weight = context.get("weight", 0.5)
+    confidence: float = 1.0 - context.get("distance", 0.5)
+    weight: float = context.get("weight", 0.5)
 
     # ── Safety response overrides everything ──────────────────────────────────
     if safety:
-        level = safety.get("level", "HARM")
-        display = SAFETY_RESPONSES.get(level, SAFETY_RESPONSES["HARM"])
-        surface = {
+        level: str = safety.get("level", "HARM")
+        display: str = SAFETY_RESPONSES.get(level, SAFETY_RESPONSES["HARM"])
+        surface: Dict[str, Any] = {
             "display": display,
             "confidence": 1.0,
             "weight": 1.0,
             "safe": False,
             "record_id": None
         }
-        record_id = memory.record(
+        record_id: int = memory.record(
             event_type="SURFACE",
             input_data=input_text,
             output=f"SAFETY RESPONSE: {level}",
@@ -138,15 +160,15 @@ def present(enriched_package: dict) -> dict:
         return surface
 
     # ── Normal response ───────────────────────────────────────────────────────
-    lines = []
+    lines: List[str] = []
     lines.append("\n" + "─" * 60)
-    lines.append(f"  INPUT UNDERSTOOD")
+    lines.append("  INPUT UNDERSTOOD")
     lines.append("─" * 60)
     lines.append(f"  You said:     {input_text[:80]}")
     lines.append(f"  Type:         {input_type.capitalize()}")
     lines.append(f"  Complexity:   {enriched_package.get('complexity', 'unknown').capitalize()}")
     lines.append("")
-    lines.append(f"  CONTEXT")
+    lines.append("  CONTEXT")
     lines.append(f"  {context.get('summary', '')}")
     lines.append("")
 
@@ -156,11 +178,11 @@ def present(enriched_package: dict) -> dict:
             lines.append(f"    • {sample}")
         lines.append("")
 
-    lines.append(f"  CONFIDENCE")
+    lines.append("  CONFIDENCE")
     lines.append(f"  {_confidence_label(confidence)}")
     lines.append(f"  Score: {confidence*100:.0f}%")
     lines.append("")
-    lines.append(f"  ATTENTION LEVEL")
+    lines.append("  ATTENTION LEVEL")
     lines.append(f"  {_weight_label(weight)}")
     lines.append("─" * 60)
 
