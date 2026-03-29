@@ -1,0 +1,27 @@
+# ONTO — .gitattributes
+# Enforces consistent line endings across all platforms.
+# This protects the principles.txt hash from breaking
+# when edited on Windows, Mac, or Linux.
+#
+# Plain English: Every text file in this project
+# uses Unix line endings (LF) — not Windows (CRLF).
+# This ensures the hash is the same on every device.
+
+# Default — all text files use LF
+* text=auto eol=lf
+
+# Explicitly enforce LF on critical files
+principles.txt      text eol=lf
+*.py                text eol=lf
+*.sh                text eol=lf
+*.md                text eol=lf
+*.txt               text eol=lf
+*.json              text eol=lf
+*.hash              text eol=lf
+
+# Binary files — no line ending conversion
+*.db                binary
+*.docx              binary
+*.png               binary
+*.jpg               binary
+*.jpeg              binary
