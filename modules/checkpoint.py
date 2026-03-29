@@ -14,45 +14,55 @@ It writes that down forever.
 This is Principles III (Freedom) and VIII (Integrity) — in code.
 """
 
+import sys
+from typing import Any, Dict, List, Optional, Tuple
 from modules import memory
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHECKPOINT THRESHOLDS
-# When weight or safety concern is above these — always ask human.
+# When weight or confidence crosses these — always ask the human.
 # ─────────────────────────────────────────────────────────────────────────────
 
-ALWAYS_ASK_WEIGHT     = 0.65   # High weight inputs always get a checkpoint
-ALWAYS_ASK_CONFIDENCE = 0.50   # Low confidence always gets a checkpoint
+ALWAYS_ASK_WEIGHT: float = 0.65    # High weight inputs always get a checkpoint
+ALWAYS_ASK_CONFIDENCE: float = 0.50  # Low confidence always gets a checkpoint
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN CHECKPOINT FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run(surface: dict, enriched_package: dict) -> dict:
+def run(
+    surface: Dict[str, Any],
+    enriched_package: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Presents the surface to the human and asks for their decision.
     Always records the human's response as permanent ground truth.
 
-    Returns a checkpoint dict with:
-      decision    — what the human chose
-      action      — what should happen next
-      skipped     — True if checkpoint was not needed
-      record_id   — permanent audit record ID
+    Args:
+        surface: The output from modules/surface.py.
+        enriched_package: The enriched package from modules/contextualize.py.
+
+    Returns:
+        Dict containing:
+            decision    — what the human chose
+            action      — what should happen next
+            skipped     — True if checkpoint was not needed
+            record_id   — permanent audit record ID
     """
-    input_text  = enriched_package.get("clean", "")
-    confidence  = surface.get("confidence", 0.5)
-    weight      = surface.get("weight", 0.5)
-    safe        = surface.get("safe", True)
+    input_text: str = enriched_package.get("clean", "")
+    confidence: float = surface.get("confidence", 0.5)
+    weight: float = surface.get("weight", 0.5)
+    safe: bool = surface.get("safe", True)
 
     # ── Safety — always checkpoint, no exceptions ─────────────────────────────
     if not safe:
         print(surface["display"])
-        decision = _ask_human(
+        decision: str = _ask_human(
             prompt="Is there anything I can help you with right now?",
             options=None
         )
-        record_id = memory.record(
+        record_id: int = memory.record(
             event_type="CHECKPOINT",
             input_data=input_text,
             human_decision=decision,
@@ -69,8 +79,8 @@ def run(surface: dict, enriched_package: dict) -> dict:
     print(surface["display"])
 
     # ── Decide if a checkpoint is needed ──────────────────────────────────────
-    needs_checkpoint = (
-        weight     >= ALWAYS_ASK_WEIGHT or
+    needs_checkpoint: bool = (
+        weight >= ALWAYS_ASK_WEIGHT or
         confidence <= ALWAYS_ASK_CONFIDENCE
     )
 
@@ -102,23 +112,25 @@ def run(surface: dict, enriched_package: dict) -> dict:
     decision = _ask_human(
         prompt="How would you like to proceed?",
         options=[
-            ("proceed",  "Accept this and move forward"),
-            ("reject",   "This is wrong or not useful"),
-            ("clarify",  "I need to add more context"),
-            ("skip",     "Skip this for now"),
-            ("stop",     "Stop the session")
+            ("proceed", "Accept this and move forward"),
+            ("reject",  "This is wrong or not useful"),
+            ("clarify", "I need to add more context"),
+            ("skip",    "Skip this for now"),
+            ("stop",    "Stop the session")
         ]
     )
 
-    action_map = {
+    # Determine next action
+    action_map: Dict[str, str] = {
         "proceed": "PROCEED",
         "reject":  "REJECT",
         "clarify": "CLARIFY",
         "skip":    "SKIP",
         "stop":    "STOP"
     }
-    action = action_map.get(decision.lower(), "PROCEED")
+    action: str = action_map.get(decision.lower(), "PROCEED")
 
+    # Record the human's decision permanently
     record_id = memory.record(
         event_type="CHECKPOINT",
         input_data=input_text,
@@ -142,11 +154,22 @@ def run(surface: dict, enriched_package: dict) -> dict:
 # ASK HUMAN — PLAIN, CLEAR PROMPTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _ask_human(prompt: str, options: list = None) -> str:
+def _ask_human(
+    prompt: str,
+    options: Optional[List[Tuple[str, str]]] = None
+) -> str:
     """
     Asks the human a question and waits for their answer.
     If options are provided, displays them clearly.
     Always accepts a free-text response as fallback.
+
+    Args:
+        prompt: The question to ask the human.
+        options: Optional list of (key, description) tuples to display
+                 as choices. If None, accepts any free-text response.
+
+    Returns:
+        str: The human's response, stripped of whitespace.
     """
     print(f"\n  {prompt}")
 
@@ -158,7 +181,7 @@ def _ask_human(prompt: str, options: list = None) -> str:
 
     while True:
         try:
-            response = input("  > ").strip()
+            response: str = input("  > ").strip()
             if response:
                 return response
             print("  Please enter a response.")
@@ -168,5 +191,4 @@ def _ask_human(prompt: str, options: list = None) -> str:
                 event_type="HALT",
                 notes="Session ended by user at checkpoint."
             )
-            import sys
             sys.exit(0)
