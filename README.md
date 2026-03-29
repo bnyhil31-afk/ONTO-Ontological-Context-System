@@ -80,15 +80,15 @@ You need Python 3.7 or higher. That is all.
 ```bash
 sudo apt update
 sudo apt install python3
-git clone https://github.com/bnyhil31-afk/Hello-World.git
-cd Hello-World
+git clone https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System.git
+cd ONTO-Ontological-Context-System
 bash setup.sh
 ```
 
 **On Mac:**
 ```bash
-git clone https://github.com/bnyhil31-afk/Hello-World.git
-cd Hello-World
+git clone https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System.git
+cd ONTO-Ontological-Context-System
 bash setup.sh
 ```
 
@@ -110,7 +110,7 @@ Type anything. Press Enter. Follow the prompts.
 ## What the files do
 
 ```
-Hello-World/
+ONTO-Ontological-Context-System/
 │
 ├── principles.txt          The foundation. Read this first.
 │
@@ -211,7 +211,7 @@ MIT — Open. Free. For everyone. Always.
 
 ## Repository
 
-https://github.com/bnyhil31-afk/Hello-World
+https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System
 
 ## Verified Principles Hash
 
