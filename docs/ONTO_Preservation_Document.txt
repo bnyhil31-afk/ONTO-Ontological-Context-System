@@ -1,0 +1,249 @@
+ONTO — PRESERVATION DOCUMENT
+What Must Never Change. How It Is Protected.
+Version 1.0 — March 2026
+Author: Neo
+Repository: https://github.com/bnyhil31-afk/Hello-World
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+A NOTE BEFORE READING
+
+This document exists because good intentions are not enough.
+History is full of projects that started with noble purpose
+and ended serving the opposite.
+
+This document is the answer to one question:
+
+  "If everything changes — what must never change?"
+
+Read it as a commitment. Not from a company. Not from a council.
+From the people who built this — to the people who use it,
+depend on it, and trust it.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART I — WHAT MUST NEVER CHANGE
+
+Three things are non-negotiable. Under any circumstance.
+Under any ownership. Under any pressure. Under any law
+that does not directly conflict with human safety.
+
+1. THE PRINCIPLES
+
+   The 13 principles are the foundation of this system.
+   They cannot be suspended, amended, or quietly ignored.
+   They apply to everyone equally — users, contributors,
+   owners, acquirers, and governments.
+
+   They are not a policy. They are structural.
+   The system enforces them on every boot, before every action.
+
+   If the principles are ever changed by anyone —
+   the system refuses to operate.
+   The world is notified by the public hash.
+   The divergence is documented permanently.
+
+2. THE OPEN SOURCE VERSION
+
+   A free, fully functional version of ONTO must always exist.
+   Available to anyone. Without cost. Without account.
+   Without internet. Without permission.
+
+   No acquisition, partnership, or commercial arrangement
+   can remove this. Ever.
+
+   If the open source version is ever abandoned —
+   the community has the right and the means to continue it.
+   The MIT license guarantees this.
+
+3. THE COMMUNITY
+
+   The people who use ONTO — individuals, researchers,
+   developers, and everyday people — must never be
+   exploited by the system they trust.
+
+   Their data belongs to them.
+   Their decisions belong to them.
+   Their trust is not a product to be sold.
+
+   Any commercial arrangement that treats users as
+   the product rather than the purpose is a violation
+   of these principles. Full stop.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART II — HOW IT IS PROTECTED
+
+Three layers of protection. No single point of human failure.
+No council. No committee. No politics.
+
+LAYER 1 — TECHNICAL PROTECTION (The Hash)
+
+   The principles are cryptographically sealed.
+   Their SHA-256 hash is published publicly and permanently.
+
+   Verified hash:
+   b1d3054f646c5f3abaffd3a275683949aef426d135cf823e7b3665fb06a03ba5
+
+   Public record:
+   https://gist.github.com/bnyhil31-afk/6436e717a619b9a4d685f5b8709a53c8
+
+   Anyone, anywhere, at any time can verify the principles
+   have not been changed. No authority required.
+   No permission required. No trust required.
+
+   The code itself performs this verification on every boot.
+   If verification fails — the system stops completely.
+
+   This layer requires no human to enforce it.
+   It enforces itself.
+
+LAYER 2 — COMMUNITY PROTECTION (Witness and Record)
+
+   The open source community serves as the collective witness.
+
+   Not as an authority. Not as a governing body.
+   Simply as people who are paying attention.
+
+   If any version of ONTO — commercial, forked, or modified —
+   diverges from the principles, any community member has
+   the right and the responsibility to:
+
+   — Document the divergence publicly
+   — Reference the original principles and hash
+   — Make the divergence part of the permanent record
+
+   No vote required. No approval required.
+   Truth does not need permission.
+
+   This layer requires no single person to enforce it.
+   It is enforced by many.
+
+LAYER 3 — IDENTITY PROTECTION (The Name)
+
+   The name ONTO and its associated identity belong to
+   the original project and its principles.
+
+   Any fork that removes or overrides the principles
+   may not present itself as ONTO.
+
+   It may be a fork of ONTO's code.
+   It is not ONTO.
+
+   The distinction matters — because users deserve to know
+   what they are trusting. A system without the principles
+   is a different system. It should say so.
+
+   This layer requires no enforcement by any individual.
+   The public record makes the distinction clear.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART III — IF ONTO IS ACQUIRED
+
+If ONTO is ever acquired by any individual, company,
+institution, or government body, the following conditions
+are non-negotiable and must be included in any
+acquisition agreement:
+
+1. The 13 principles remain intact and enforced.
+   The acquiring party cannot modify, suspend, or override them.
+
+2. The open source version remains free and available.
+   The acquiring party must maintain it or release it
+   to the community to maintain.
+
+3. User data is not used for purposes beyond
+   what users have consented to.
+   The acquiring party cannot retroactively change
+   the terms under which existing data was collected.
+
+4. The public hash record remains published
+   and independently accessible.
+
+5. This preservation document becomes part of
+   any acquisition agreement — by reference or inclusion.
+
+If any of these conditions cannot be met —
+the acquisition should not proceed.
+
+These are not negotiating points.
+They are the price of the name.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART IV — IF ONTO IS FORKED
+
+Anyone may fork ONTO's code. The MIT license guarantees this.
+Forks are welcomed. Forks are how open source grows.
+
+However:
+
+A fork that maintains the principles in full
+may present itself as built on ONTO.
+
+A fork that removes or overrides the principles
+must make this clear to its users.
+It may not use the ONTO name without qualification.
+The divergence must be documented and public.
+
+This is not a legal threat. It is a clarity requirement.
+Users deserve to know what they are trusting.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART V — IF THE ORIGINAL AUTHORS ARE GONE
+
+This project was built by a person.
+People are mortal. People move on. People change.
+
+If the original authors are ever unable or unwilling
+to maintain ONTO — the following applies:
+
+1. The open source version passes to the community.
+   The MIT license already ensures this.
+   Anyone may continue it.
+
+2. The principles travel with the code.
+   They cannot be separated from it.
+   The hash remains the verification standard.
+
+3. No individual or organization automatically
+   inherits authority over the principles.
+   The principles govern themselves technically.
+   The community witnesses socially.
+
+4. Anyone who continues the project takes on
+   the same commitment documented here.
+   Not because they are required to.
+   Because that is what it means to carry this forward.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PART VI — A PERSONAL NOTE
+
+This system was built in the belief that technology
+should serve people — not the other way around.
+
+That belief is not naive. It is a choice.
+Made deliberately. Documented publicly.
+Enforced structurally.
+
+The people who built this are bound by these commitments
+first — before anyone else.
+
+If we ever fall short — say so.
+The record will show it.
+And we will do better.
+
+That is the only promise we can make with certainty.
+And we make it openly, to everyone.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This document is part of the permanent record of ONTO.
+It is itself subject to the principles it describes.
+It cannot be changed without that change being visible.
+It only grows.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
