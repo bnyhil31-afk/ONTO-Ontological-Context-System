@@ -67,6 +67,19 @@ SECTION 1 — CODE QUALITY & TESTING
           Done when: Every version change is documented with
           date, description, and reason. Starting from v1.0.
 
+[ ] 1.09A CRITICAL / SMALL / Stage 1
+          Documentation consistency — enforced always
+          The rule: Code, tests, and documentation must always agree.
+          Any change to the test suite requires updating simultaneously:
+            — The test file header (expected count)
+            — tests/README.md (expected count)
+            — The checklist (current status)
+            — Any other document referencing the changed item
+          A wrong number anywhere is a broken trust chain.
+          Done when: Rule is written into CONTRIBUTING.md.
+          Verified by human review before every commit touching tests.
+          No exceptions.
+
 [ ] 1.10  MEDIUM / SMALL / Stage 1
           Code linting — PEP8 compliance
           Done when: flake8 or ruff runs clean across all files.
@@ -568,8 +581,20 @@ CURRENT STATUS — Version 1.0 MVP
 [✅] Project record document created
 [✅] README complete with install instructions
 [✅] Gist published with verified hash
+[✅] 1.01 — Test suite written — 82 tests, 82 passing, 0 failures
+[✅] 1.02 — Principle verification tested — pass and fail cases confirmed
+[✅] 1.03 — Safety flag detection tested — CRISIS, HARM, INTEGRITY all pass
+[✅] 1.04 — Memory append-only enforcement tested and confirmed
+[✅] 1.05 — Full five-step loop tested end to end
+[✅] 5.05 — Line endings protection — .gitattributes and setup.sh updated
+[✅] conftest.py — shared test isolation in place
+[✅] requirements-test.txt — one command test setup
+[✅] tests/README.md — plain language guide for running tests
 
-Remaining items: 48
+RULE ADDED: 1.09A — Documentation consistency enforced always.
+Code, tests, and documentation must always agree. No exceptions.
+
+Remaining items: 44
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
