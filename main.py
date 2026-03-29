@@ -10,11 +10,12 @@ Plain English: Run this to start the system.
 Type anything. The system will understand, respond, and ask what to do next.
 Everything is recorded. Nothing is hidden.
 
-Run with:  python main.py
+Run with:  python3 main.py
 """
 
-import sys
 import os
+import sys
+from typing import Any, Dict, List
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,10 +28,15 @@ from modules import memory, intake, contextualize, surface, checkpoint
 # BOOT SEQUENCE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def boot():
+def boot() -> None:
     """
     Everything that must happen before the system is ready.
-    In order. Without exception.
+    Runs in order. Without exception.
+
+    Steps:
+        1. Verify the principles are intact
+        2. Initialize permanent memory
+        3. Rebuild the context field from past sessions
     """
     print("\n" + "═" * 60)
     print("  ONTO — Ontological Context System")
@@ -49,10 +55,10 @@ def boot():
 
     # 3. Rebuild the field from past sessions
     print("  [3/3] Rebuilding context field...")
-    field_size = contextualize.load_from_memory()
+    field_size: int = contextualize.load_from_memory()
     print(f"        Field restored. {field_size} past entries loaded. ✓")
 
-    # Record boot
+    # Record boot event
     memory.record(
         event_type="BOOT",
         notes=f"System started. Field size: {field_size}"
@@ -68,14 +74,15 @@ def boot():
 # MAIN LOOP — THE DANCE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run():
+def run() -> None:
     """
-    The main loop.
+    The main loop — the dance between human and system.
     Receives input → understands it → presents it → checks with human → repeats.
+    Runs until the human chooses to stop.
     """
     while True:
         try:
-            raw = input("\n  You: ").strip()
+            raw: str = input("\n  You: ").strip()
         except (KeyboardInterrupt, EOFError):
             _shutdown()
             break
@@ -99,19 +106,19 @@ def run():
         # ── The five-step loop ────────────────────────────────────────────────
 
         # Step 1: Intake
-        package = intake.receive(raw)
+        package: Dict[str, Any] = intake.receive(raw)
 
         # Step 2: Contextualize
-        enriched = contextualize.build(package)
+        enriched: Dict[str, Any] = contextualize.build(package)
 
         # Step 3: Surface
-        surfaced = surface.present(enriched)
+        surfaced: Dict[str, Any] = surface.present(enriched)
 
         # Step 4: Checkpoint
-        result = checkpoint.run(surfaced, enriched)
+        result: Dict[str, Any] = checkpoint.run(surfaced, enriched)
 
         # Step 5: Act on decision
-        action = result.get("action", "PROCEED")
+        action: str = result.get("action", "PROCEED")
 
         if action == "STOP":
             _shutdown()
@@ -129,17 +136,17 @@ def run():
 # UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _show_history():
-    """Shows recent memory records in plain language."""
+def _show_history() -> None:
+    """Shows the most recent memory records in plain language."""
     print("\n" + "─" * 60)
     print("  RECENT HISTORY (last 10 records)")
     print("─" * 60)
-    records = memory.read_recent(10)
+    records: List[Dict[str, Any]] = memory.read_recent(10)
     memory.print_readable(records)
     print("─" * 60)
 
 
-def _show_help():
+def _show_help() -> None:
     """Shows available commands."""
     print("""
   AVAILABLE COMMANDS
@@ -151,8 +158,8 @@ def _show_help():
     """)
 
 
-def _shutdown():
-    """Graceful shutdown with record."""
+def _shutdown() -> None:
+    """Records a clean shutdown and exits gracefully."""
     memory.record(event_type="HALT", notes="Session ended normally.")
     print("\n  Session ended. All records saved.\n")
 
