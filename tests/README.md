@@ -15,7 +15,7 @@ If any test fails — something needs attention before shipping.
 ## What success looks like
 
 ```
-83 passed, 0 failed, 0 errors
+82 passed, 0 failed, 0 errors
 ```
 
 If you see anything different — something needs attention.
@@ -58,7 +58,7 @@ ERROR    — something unexpected happened
 
 At the end you will see a summary:
 ```
-83 passed in 4.2s
+82 passed in 4.2s
 ```
 
 ---
