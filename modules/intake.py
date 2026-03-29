@@ -14,14 +14,14 @@ This is Principles II (Life First) and V (Do No Harm) — in code.
 """
 
 import re
-from typing import Optional
+from typing import Dict, List, Optional, Tuple, Any
 from modules import memory
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INPUT TYPES — WHAT KIND OF THING ARRIVED?
 # ─────────────────────────────────────────────────────────────────────────────
 
-INPUT_TYPES = {
+INPUT_TYPES: Dict[str, str] = {
     "text":     "Plain written or spoken words",
     "number":   "A numerical value",
     "question": "A request for information",
@@ -35,7 +35,7 @@ INPUT_TYPES = {
 # SAFETY PATTERNS — THINGS THAT NEED IMMEDIATE ATTENTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-SAFETY_PATTERNS = [
+SAFETY_PATTERNS: List[Tuple[str, str, str]] = [
     # Crisis language — mental health and physical safety
     (r"\b(kill\s*(my)?self|suicide|end\s*my\s*life|hurt\s*(my)?self|"
      r"don'?t\s*want\s*to\s*(live|be\s*here|exist))\b",
@@ -55,34 +55,39 @@ SAFETY_PATTERNS = [
 # MAIN INTAKE FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-def receive(raw_input: str, source: str = "human") -> dict:
+def receive(raw_input: str, source: str = "human") -> Dict[str, Any]:
     """
     Receives any input and returns a structured, classified package
     ready for the rest of the system to work with.
 
-    Returns a dict with:
-      raw         — exactly what came in, unchanged
-      clean       — trimmed, normalized
-      input_type  — what kind of input this is
-      source      — where it came from
-      word_count  — how long it is
-      complexity  — simple / moderate / complex
-      safety      — None, or a safety flag dict
-      record_id   — permanent audit record ID
+    Args:
+        raw_input: The raw input string exactly as it arrived.
+        source: Where the input came from. Defaults to 'human'.
+
+    Returns:
+        Dict containing:
+            raw         — exactly what came in, unchanged
+            clean       — trimmed, normalized
+            input_type  — what kind of input this is
+            source      — where it came from
+            word_count  — how many words it contains
+            complexity  — simple / moderate / complex
+            safety      — None if clear, or a safety flag dict
+            record_id   — permanent audit record ID
     """
     # Clean without altering meaning
-    clean = raw_input.strip()
+    clean: str = raw_input.strip()
 
     # Classify
-    input_type = _classify(clean)
-    word_count = len(clean.split())
-    complexity = _estimate_complexity(clean, word_count)
+    input_type: str = _classify(clean)
+    word_count: int = len(clean.split())
+    complexity: str = _estimate_complexity(clean, word_count)
 
     # Safety check — always runs first
-    safety_flag = _check_safety(clean)
+    safety_flag: Optional[Dict[str, Any]] = _check_safety(clean)
 
     # Build the package
-    package = {
+    package: Dict[str, Any] = {
         "raw": raw_input,
         "clean": clean,
         "input_type": input_type,
@@ -94,7 +99,7 @@ def receive(raw_input: str, source: str = "human") -> dict:
     }
 
     # Record to permanent memory
-    record_id = memory.record(
+    record_id: int = memory.record(
         event_type="INTAKE",
         input_data=clean,
         context={"type": input_type, "source": source, "complexity": complexity},
@@ -118,12 +123,19 @@ def receive(raw_input: str, source: str = "human") -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _classify(text: str) -> str:
-    """Makes a best guess at what kind of input this is."""
+    """
+    Makes a best guess at what kind of input this is.
 
+    Args:
+        text: The cleaned input string.
+
+    Returns:
+        str: One of the keys from INPUT_TYPES.
+    """
     if not text:
         return "unknown"
 
-    text_lower = text.lower()
+    text_lower: str = text.lower()
 
     # Questions
     if text.endswith("?") or text_lower.startswith(
@@ -157,8 +169,16 @@ def _estimate_complexity(text: str, word_count: int) -> str:
     Estimates how complex an input is.
     Affects how much context-building the system will do.
     Distance, complexity, and size — all measured here.
+
+    Args:
+        text: The cleaned input string.
+        word_count: The number of words in the input.
+
+    Returns:
+        str: One of 'simple', 'moderate', or 'complex'.
     """
     # Size factor
+    size: str
     if word_count <= 5:
         size = "small"
     elif word_count <= 30:
@@ -167,7 +187,7 @@ def _estimate_complexity(text: str, word_count: int) -> str:
         size = "large"
 
     # Sentence count as proxy for complexity
-    sentence_count = max(1, len(re.split(r'[.!?]+', text)))
+    sentence_count: int = max(1, len(re.split(r'[.!?]+', text)))
 
     if sentence_count == 1 and size == "small":
         return "simple"
@@ -181,15 +201,19 @@ def _estimate_complexity(text: str, word_count: int) -> str:
 # SAFETY CHECK
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _check_safety(text: str) -> Optional[dict]:
+def _check_safety(text: str) -> Optional[Dict[str, Any]]:
     """
     Scans input for signals that require immediate human attention.
-    Returns None if all clear.
-    Returns a flag dict if anything concerning is found.
-
     This is not about judgment. It is about care.
+
+    Args:
+        text: The cleaned input string.
+
+    Returns:
+        None if the input is clear.
+        Dict with 'level', 'message', and 'requires_human' if flagged.
     """
-    text_lower = text.lower()
+    text_lower: str = text.lower()
 
     for pattern, level, message in SAFETY_PATTERNS:
         if re.search(pattern, text_lower, re.IGNORECASE):
