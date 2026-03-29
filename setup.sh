@@ -31,11 +31,39 @@ fi
 
 echo "  [✓] Python 3 found."
 
+# ── NORMALIZE LINE ENDINGS ────────────────────────────────────────────────────
+# This protects the principles.txt hash from breaking
+# when the file has been edited or cloned on Windows.
+# Plain English: Makes sure every line ends the same way
+# on every device — so the hash never fails unexpectedly.
+
+echo "  Normalizing line endings..."
+
+if command -v dos2unix &> /dev/null; then
+    dos2unix principles.txt 2>/dev/null
+    echo "  [✓] Line endings normalized with dos2unix."
+else
+    # Fallback — use Python to normalize if dos2unix not available
+    python3 -c "
+import sys
+path = 'principles.txt'
+with open(path, 'rb') as f:
+    content = f.read()
+normalized = content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+if normalized != content:
+    with open(path, 'wb') as f:
+        f.write(normalized)
+    print('  [✓] Line endings normalized with Python fallback.')
+else:
+    print('  [✓] Line endings already correct.')
+"
+fi
+
 # Create data directory
 mkdir -p data
 echo "  [✓] Data directory ready."
 
-# Seal the principles — the most important step
+# ── SEAL THE PRINCIPLES ───────────────────────────────────────────────────────
 echo ""
 echo "  Sealing the principles..."
 python3 -c "
