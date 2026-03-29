@@ -16,24 +16,27 @@ import sqlite3
 import json
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Dict, List, Optional, Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────────────────────────────────────────
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(ROOT, "data", "memory.db")
+ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH: str = os.path.join(ROOT, "data", "memory.db")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP
 # ─────────────────────────────────────────────────────────────────────────────
 
-def initialize():
+def initialize() -> bool:
     """
     Creates the database and tables if they don't exist.
     Safe to run multiple times — will never overwrite existing data.
+
+    Returns:
+        bool: True when initialization is complete.
     """
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with _connect() as conn:
@@ -50,7 +53,6 @@ def initialize():
                 notes       TEXT
             )
         """)
-        # Prevent deletion or update — append only
         conn.execute("""
             CREATE TRIGGER IF NOT EXISTS prevent_delete
             BEFORE DELETE ON events
@@ -75,7 +77,7 @@ def initialize():
 def record(
     event_type: str,
     input_data: Optional[str] = None,
-    context: Optional[dict] = None,
+    context: Optional[Dict[str, Any]] = None,
     output: Optional[str] = None,
     confidence: Optional[float] = None,
     human_decision: Optional[str] = None,
@@ -85,18 +87,28 @@ def record(
     Records a single event permanently.
     Returns the record ID for reference.
 
-    event_type options:
-      INTAKE      — new input received
-      CONTEXT     — context field updated
-      SURFACE     — options presented to human
-      CHECKPOINT  — human decision recorded
-      SAFETY      — safety flag raised
-      ERROR       — something went wrong
-      BOOT        — system started
-      HALT        — system stopped
+    Args:
+        event_type: The type of event being recorded.
+            INTAKE      — new input received
+            CONTEXT     — context field updated
+            SURFACE     — options presented to human
+            CHECKPOINT  — human decision recorded
+            SAFETY      — safety flag raised
+            ERROR       — something went wrong
+            BOOT        — system started
+            HALT        — system stopped
+        input_data: The raw input that triggered this event.
+        context: A dictionary of context data at time of event.
+        output: What the system produced in response.
+        confidence: How confident the system was (0.0 to 1.0).
+        human_decision: What the human decided at checkpoint.
+        notes: Any additional notes about this event.
+
+    Returns:
+        int: The unique ID of the newly created record.
     """
-    timestamp = datetime.now(timezone.utc).isoformat()
-    context_str = json.dumps(context) if context else None
+    timestamp: str = datetime.now(timezone.utc).isoformat()
+    context_str: Optional[str] = json.dumps(context) if context else None
 
     with _connect() as conn:
         cursor = conn.execute("""
@@ -115,8 +127,13 @@ def record(
 # READ — ANYONE CAN READ
 # ─────────────────────────────────────────────────────────────────────────────
 
-def read_all() -> list:
-    """Returns every record in plain readable form."""
+def read_all() -> List[Dict[str, Any]]:
+    """
+    Returns every record in plain readable form, oldest first.
+
+    Returns:
+        List[Dict]: All records as readable dictionaries.
+    """
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM events ORDER BY id ASC
@@ -124,8 +141,16 @@ def read_all() -> list:
     return [_row_to_dict(row) for row in rows]
 
 
-def read_by_type(event_type: str) -> list:
-    """Returns all records of a specific type."""
+def read_by_type(event_type: str) -> List[Dict[str, Any]]:
+    """
+    Returns all records of a specific event type.
+
+    Args:
+        event_type: The event type to filter by (e.g. 'INTAKE', 'SAFETY').
+
+    Returns:
+        List[Dict]: Matching records as readable dictionaries.
+    """
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM events WHERE event_type = ? ORDER BY id ASC
@@ -133,8 +158,16 @@ def read_by_type(event_type: str) -> list:
     return [_row_to_dict(row) for row in rows]
 
 
-def read_recent(limit: int = 10) -> list:
-    """Returns the most recent records."""
+def read_recent(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Returns the most recently added records.
+
+    Args:
+        limit: Maximum number of records to return. Defaults to 10.
+
+    Returns:
+        List[Dict]: Most recent records in chronological order.
+    """
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM events ORDER BY id DESC LIMIT ?
@@ -142,8 +175,14 @@ def read_recent(limit: int = 10) -> list:
     return [_row_to_dict(row) for row in reversed(rows)]
 
 
-def print_readable(records: list):
-    """Prints records in plain human-readable format."""
+def print_readable(records: List[Dict[str, Any]]) -> None:
+    """
+    Prints records in plain human-readable format.
+
+    Args:
+        records: A list of record dictionaries from read_all(),
+                 read_by_type(), or read_recent().
+    """
     if not records:
         print("  No records found.")
         return
@@ -165,13 +204,26 @@ def print_readable(records: list):
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _connect():
-    """Opens a database connection."""
+def _connect() -> sqlite3.Connection:
+    """
+    Opens and returns a database connection.
+
+    Returns:
+        sqlite3.Connection: An active connection to the memory database.
+    """
     return sqlite3.connect(DB_PATH)
 
 
-def _row_to_dict(row) -> dict:
-    """Converts a database row to a readable dictionary."""
+def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    """
+    Converts a raw database row into a readable dictionary.
+
+    Args:
+        row: A raw row returned from a SQLite query.
+
+    Returns:
+        Dict: A human-readable dictionary of the record's fields.
+    """
     return {
         "id": row[0],
         "timestamp": row[1],
