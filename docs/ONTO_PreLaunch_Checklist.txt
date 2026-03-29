@@ -1,0 +1,581 @@
+ONTO — PRE-LAUNCH MASTER CHECKLIST
+Version 1.0 — March 2026
+Status: IN PROGRESS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW TO USE THIS DOCUMENT
+
+Each item has:
+  [ ] Status      — unchecked, in progress, or complete
+  Priority        — CRITICAL, HIGH, MEDIUM, LOW
+  Effort          — SMALL (hours), MEDIUM (days), LARGE (weeks)
+  Stage           — which growth stage this belongs to
+  Notes           — what done looks like
+
+Work CRITICAL items before HIGH. HIGH before MEDIUM.
+Never ship with an unchecked CRITICAL item.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 1 — CODE QUALITY & TESTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 1.01  CRITICAL / SMALL / Stage 1
+          Write pytest test suite — core modules
+          Done when: Every module has tests. All pass. Coverage above 80%.
+
+[ ] 1.02  CRITICAL / SMALL / Stage 1
+          Test principle verification — pass and fail cases
+          Done when: System halts correctly on tampered principles.
+          System passes on intact principles. Both verified by test.
+
+[ ] 1.03  CRITICAL / SMALL / Stage 1
+          Test safety flag detection — all three patterns
+          Done when: CRISIS, HARM, INTEGRITY all trigger correctly.
+          False positives measured and documented.
+
+[ ] 1.04  CRITICAL / SMALL / Stage 1
+          Test memory append-only enforcement
+          Done when: Delete and update triggers confirmed active.
+          Attempt to delete a record fails with correct error message.
+
+[ ] 1.05  CRITICAL / MEDIUM / Stage 1
+          Test full five-step loop end to end
+          Done when: Input enters at intake and exits at checkpoint
+          with correct output at every stage. Recorded in memory.
+
+[ ] 1.06  HIGH / SMALL / Stage 1
+          Add Python type hints to all functions
+          Done when: Every function has typed parameters and return values.
+          mypy runs clean with zero errors.
+
+[ ] 1.07  HIGH / SMALL / Stage 1
+          Add input sanitization to intake.py
+          Done when: SQL injection, script injection, and
+          malformed unicode handled gracefully without crashing.
+
+[ ] 1.08  HIGH / MEDIUM / Stage 1
+          Edge case testing — empty input, very long input,
+          special characters, non-English text, numbers only,
+          binary data, extremely rapid repeated inputs.
+          Done when: System handles all without crashing.
+          Behavior documented for each case.
+
+[ ] 1.09  HIGH / SMALL / Stage 1
+          Add a CHANGELOG.md
+          Done when: Every version change is documented with
+          date, description, and reason. Starting from v1.0.
+
+[ ] 1.10  MEDIUM / SMALL / Stage 1
+          Code linting — PEP8 compliance
+          Done when: flake8 or ruff runs clean across all files.
+
+[ ] 1.11  MEDIUM / SMALL / Stage 1
+          Add continuous integration — GitHub Actions
+          Done when: Every commit automatically runs the test suite.
+          Failed tests block merges to main.
+
+[ ] 1.12  MEDIUM / MEDIUM / Stage 2
+          Load testing — performance under volume
+          Done when: System benchmarked at 100, 1000, 10000,
+          100000 entries. Degradation points documented honestly.
+
+[ ] 1.13  LOW / MEDIUM / Stage 2
+          Code coverage reporting
+          Done when: Coverage report generated and published.
+          Target above 90% for CRITICAL modules.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 2 — SECURITY & HARDENING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 2.01  CRITICAL / MEDIUM / Stage 1
+          Encrypt the SQLite database at rest
+          Done when: memory.db is encrypted using SQLCipher
+          or equivalent. Key management documented.
+          Unencrypted database cannot be opened without key.
+
+[ ] 2.02  CRITICAL / MEDIUM / Stage 1
+          Add authentication layer
+          Done when: System requires verified identity before
+          accepting input. Unauthenticated access rejected.
+          Auth events recorded in audit trail.
+
+[ ] 2.03  CRITICAL / SMALL / Stage 1
+          Sanitize all inputs against injection attacks
+          Done when: SQL injection, command injection, and
+          path traversal attempts all fail safely.
+          Verified by test suite.
+
+[ ] 2.04  CRITICAL / MEDIUM / Stage 2
+          Third party security audit
+          Done when: Independent security firm has reviewed
+          codebase and published findings. Critical findings
+          resolved before launch. Report publicly available.
+
+[ ] 2.05  HIGH / SMALL / Stage 1
+          Add rate limiting to intake
+          Done when: System limits inputs per user per minute.
+          Excess requests rejected gracefully with explanation.
+          Limits configurable. Defaults documented.
+
+[ ] 2.06  HIGH / SMALL / Stage 1
+          Secure the principles.hash file
+          Done when: Hash file permissions set to read-only.
+          Any modification attempt logged immediately.
+
+[ ] 2.07  HIGH / MEDIUM / Stage 1
+          Dependency scanning
+          Done when: Automated scan confirms zero known
+          vulnerabilities in any dependency.
+          Re-runs on every new dependency addition.
+
+[ ] 2.08  HIGH / MEDIUM / Stage 2
+          Penetration testing
+          Done when: Ethical hacker has attempted to break
+          the system. Findings documented and resolved.
+
+[ ] 2.09  HIGH / SMALL / Stage 1
+          Secure session management
+          Done when: Sessions expire after inactivity.
+          Session tokens not stored in plaintext.
+          Session termination recorded in audit trail.
+
+[ ] 2.10  MEDIUM / MEDIUM / Stage 2
+          Intrusion detection
+          Done when: Anomalous behavior triggers alert.
+          Repeated failed auth attempts flagged.
+          Principle tampering attempts logged and reported.
+
+[ ] 2.11  MEDIUM / SMALL / Stage 1
+          Environment variable management
+          Done when: No secrets, keys, or credentials
+          exist in the codebase. All loaded from
+          environment variables or secure vault.
+
+[ ] 2.12  MEDIUM / LARGE / Stage 3
+          SOC 2 Type II preparation
+          Done when: Security controls documented.
+          Audit trail meets SOC 2 requirements.
+          Third party auditor engaged.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 3 — DOCUMENTATION & ONBOARDING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 3.01  CRITICAL / SMALL / Stage 1
+          End-to-end setup test by a real person
+          Done when: Someone who has never seen the project
+          follows the README and gets it running without help.
+          Every point of confusion documented and fixed.
+
+[ ] 3.02  CRITICAL / SMALL / Stage 1
+          Windows setup instructions
+          Done when: WSL setup steps verified working on
+          Windows 10 and Windows 11. Screenshots included.
+
+[ ] 3.03  CRITICAL / SMALL / Stage 1
+          Raspberry Pi setup instructions
+          Done when: Steps verified on physical Raspberry Pi.
+          Tested on Pi Zero 2W and Pi 4. Both documented.
+
+[ ] 3.04  HIGH / MEDIUM / Stage 1
+          API documentation
+          Done when: Every module, every function, every
+          parameter documented. Input and output types clear.
+          Examples provided for every function.
+
+[ ] 3.05  HIGH / SMALL / Stage 1
+          CONTRIBUTING.md
+          Done when: Clear guidelines for how to contribute.
+          References the principles explicitly.
+          Code of conduct included.
+          Pull request process documented.
+
+[ ] 3.06  HIGH / SMALL / Stage 1
+          FAQ document
+          Done when: Most common questions answered.
+          Includes what ONTO is not.
+          Includes known limitations honestly stated.
+
+[ ] 3.07  HIGH / MEDIUM / Stage 1
+          Video walkthrough
+          Done when: Short screen recording showing
+          installation and first run. No narration required.
+          Captions preferred for accessibility.
+
+[ ] 3.08  HIGH / MEDIUM / Stage 2
+          PHILOSOPHY.md
+          Done when: The conversation behind the project
+          is documented. Why each decision was made.
+          Available in the docs/ folder.
+
+[ ] 3.09  MEDIUM / MEDIUM / Stage 2
+          Troubleshooting guide
+          Done when: Most common errors documented with
+          plain language explanations and fixes.
+          Includes what to do if principles fail verification.
+
+[ ] 3.10  MEDIUM / LARGE / Stage 2
+          Accessibility review
+          Done when: CLI output readable by screen readers.
+          Color not used as the only indicator of status.
+          Plain language verified against readability standard.
+
+[ ] 3.11  MEDIUM / MEDIUM / Stage 2
+          Multi-language README
+          Done when: README translated into at least
+          Spanish, French, and Mandarin.
+          Translations verified by native speakers.
+
+[ ] 3.12  LOW / MEDIUM / Stage 3
+          Developer SDK documentation
+          Done when: Third party developers have everything
+          needed to build on top of ONTO.
+          Examples in Python, JavaScript, and one other language.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 4 — LEGAL & LICENSING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 4.01  CRITICAL / MEDIUM / Stage 1
+          Consult an intellectual property attorney
+          Done when: Attorney has reviewed the project,
+          the MIT license, the principles, and the
+          preservation document. Written opinion received.
+
+[ ] 4.02  CRITICAL / MEDIUM / Stage 1
+          Trademark the ONTO name
+          Done when: Trademark application filed in at
+          least the United States. Process documented.
+          Legal counsel engaged for international protection.
+
+[ ] 4.03  CRITICAL / MEDIUM / Stage 1
+          Create a legal entity
+          Done when: LLC or equivalent formed in appropriate
+          jurisdiction. Registered agent appointed.
+          Bank account opened. EIN obtained.
+
+[ ] 4.04  CRITICAL / MEDIUM / Stage 2
+          GDPR compliance architecture
+          Done when: Right to erasure resolved by design.
+          Personal data layer separable from audit trail.
+          Privacy policy written and reviewed by counsel.
+          Data processing agreements available.
+
+[ ] 4.05  CRITICAL / MEDIUM / Stage 2
+          Terms of service — public version
+          Done when: Plain language terms written.
+          Reviewed by attorney. Consistent with principles.
+          Accessible from README and any public interface.
+
+[ ] 4.06  HIGH / MEDIUM / Stage 2
+          Dual license model
+          Done when: MIT license remains for open source.
+          Commercial license written and reviewed.
+          Pricing model documented.
+          Upgrade path clear for enterprise customers.
+
+[ ] 4.07  HIGH / MEDIUM / Stage 2
+          Privacy policy
+          Done when: Plain language. Reviewed by attorney.
+          GDPR and CCPA compliant.
+          Consistent with Principle XII — Consent.
+
+[ ] 4.08  HIGH / LARGE / Stage 3
+          HIPAA compliance preparation
+          Done when: Business Associate Agreement template
+          ready. Encryption at rest verified.
+          Access controls documented.
+          Legal counsel engaged.
+
+[ ] 4.09  HIGH / MEDIUM / Stage 2
+          Contributor License Agreement
+          Done when: CLA written and reviewed.
+          All contributors sign before merge.
+          Protects both contributors and the project.
+
+[ ] 4.10  MEDIUM / MEDIUM / Stage 2
+          Export control review
+          Done when: Attorney has confirmed no export
+          control issues with distributing the software
+          internationally as open source.
+
+[ ] 4.11  MEDIUM / LARGE / Stage 3
+          Enterprise contract template
+          Done when: Standard enterprise agreement drafted.
+          Includes preservation document clauses.
+          Reviewed by attorney. Ready to customize.
+
+[ ] 4.12  LOW / LARGE / Stage 3
+          International trademark protection
+          Done when: Trademark filed in EU, UK, Canada,
+          Australia at minimum. Counsel engaged for each.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 5 — PREDICTED ROADBLOCKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+These are the problems most projects discover too late.
+They are documented here so they are discovered on purpose.
+
+[ ] 5.01  CRITICAL / MEDIUM / Stage 1
+          GDPR vs Permanent Memory conflict
+          The problem: Principle VII requires permanent memory.
+          GDPR requires right to erasure. These conflict.
+          Done when: Architectural solution designed, documented,
+          and reviewed by counsel. Personal data separable
+          from audit events without breaking either principle.
+
+[ ] 5.02  CRITICAL / MEDIUM / Stage 1
+          Safety pattern false positives
+          The problem: CRISIS and HARM patterns may trigger
+          on legitimate inputs. A medical researcher typing
+          about suicide prevention gets a crisis response.
+          Done when: False positive rate measured.
+          Context-aware detection implemented.
+          Override mechanism for verified professional users.
+
+[ ] 5.03  CRITICAL / MEDIUM / Stage 2
+          First enterprise security questionnaire
+          The problem: Enterprise procurement requires
+          completion of a vendor security questionnaire
+          — often 200+ questions. Unprepared teams fail here.
+          Done when: Standard security questionnaire
+          pre-completed and maintained. Updated with
+          each security improvement.
+
+[ ] 5.04  HIGH / MEDIUM / Stage 1
+          Principle VIII vs user feedback conflict
+          The problem: A user who wants to improve the system
+          may suggest changing a principle. The hash blocks it.
+          This needs a clear, respectful, documented response.
+          Done when: Process for principle feedback documented.
+          Community discussion mechanism exists.
+          Distinction between principles and configuration clear.
+
+[ ] 5.05  HIGH / SMALL / Stage 1
+          Cross-platform line endings
+          The problem: principles.txt hash will differ between
+          Windows CRLF and Unix LF line endings.
+          A Windows user who edits and saves the file
+          will break verification even without changing content.
+          Done when: .gitattributes enforces LF line endings.
+          setup.sh normalizes line endings on install.
+          Documented in troubleshooting guide.
+
+[ ] 5.06  HIGH / MEDIUM / Stage 2
+          First public security vulnerability report
+          The problem: Someone will find a vulnerability
+          and report it. If there is no process, the response
+          will be chaotic and trust-damaging.
+          Done when: SECURITY.md exists with responsible
+          disclosure process. Contact method published.
+          Response SLA committed to. Hall of fame for reporters.
+
+[ ] 5.07  HIGH / MEDIUM / Stage 2
+          The first hostile fork
+          The problem: Someone will fork ONTO, remove the
+          principles, and build something harmful with it.
+          Done when: Preservation document published.
+          Community notification process established.
+          Response template prepared. Legal counsel briefed.
+
+[ ] 5.08  HIGH / MEDIUM / Stage 2
+          Competing with yourself
+          The problem: The commercial version and the
+          open source version must not cannibalize each other.
+          Done when: Clear feature differentiation documented.
+          Open version always functional and maintained.
+          Commercial version adds enterprise features only.
+
+[ ] 5.09  MEDIUM / SMALL / Stage 1
+          Python version fragmentation
+          The problem: Python 3.7, 3.9, 3.11, 3.12 all
+          behave slightly differently. A user on an old
+          Raspberry Pi may have Python 3.7. A developer
+          may have Python 3.12. Both need to work.
+          Done when: Test suite runs against all supported
+          versions via GitHub Actions matrix.
+          Minimum version enforced with clear error message.
+
+[ ] 5.10  MEDIUM / SMALL / Stage 1
+          Database corruption recovery
+          The problem: If memory.db is corrupted —
+          power loss during write, disk failure, etc —
+          the system has no recovery path currently.
+          Done when: Backup strategy documented.
+          Recovery procedure tested.
+          Corruption detected on boot with clear message.
+
+[ ] 5.11  MEDIUM / MEDIUM / Stage 2
+          Burnout and bus factor
+          The problem: Currently one person knows this
+          project completely. If that person is unavailable
+          — illness, life events, burnout — the project stalls.
+          Done when: At least one other person fully understands
+          the project. Knowledge transfer documented.
+          Preservation document covers succession.
+
+[ ] 5.12  MEDIUM / MEDIUM / Stage 2
+          AI regulatory changes
+          The problem: AI regulation is moving fast.
+          The EU AI Act, US executive orders, and others
+          may impose requirements that affect ONTO.
+          Done when: Legal counsel monitors regulatory
+          changes. Quarterly review of compliance posture.
+          Architecture flexible enough to adapt.
+
+[ ] 5.13  LOW / MEDIUM / Stage 3
+          The enterprise pilot that fails publicly
+          The problem: The first enterprise pilot will
+          not be perfect. If it fails publicly it damages
+          trust significantly.
+          Done when: Pilot program structure designed.
+          Success criteria agreed in advance.
+          Failure handling process documented.
+          Communications plan prepared.
+
+[ ] 5.14  LOW / SMALL / Stage 2
+          Name collision
+          The problem: ONTO may already be in use
+          as a product name somewhere.
+          Done when: Trademark search completed globally.
+          Conflicts identified and resolved before launch.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 6 — INTELLIGENCE UPGRADES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 6.01  CRITICAL / MEDIUM / Stage 1
+          Vector embeddings — Sentence Transformers
+          Done when: contextualize.py uses semantic similarity
+          not keyword overlap. Related inputs found by meaning.
+          Performance benchmarked. Principles still verify.
+
+[ ] 6.02  CRITICAL / MEDIUM / Stage 1
+          ChromaDB integration
+          Done when: Field stored in ChromaDB not Python list.
+          Survives session restarts without full rebuild.
+          Benchmarked at 10k, 100k, 1M entries.
+
+[ ] 6.03  HIGH / MEDIUM / Stage 2
+          Local LLM integration — Ollama
+          Done when: Phi-3 Mini or Mistral connected.
+          Reasoning layer added between contextualize and surface.
+          Runs fully offline. Resource usage documented.
+
+[ ] 6.04  HIGH / MEDIUM / Stage 2
+          Tiered memory architecture
+          Done when: Hot, warm, cold layers implemented.
+          Field size no longer limited by available RAM.
+          Performance consistent regardless of total dataset size.
+
+[ ] 6.05  MEDIUM / MEDIUM / Stage 2
+          Async input processing
+          Done when: Multiple inputs handled concurrently.
+          No blocking. Performance tested under load.
+          Audit trail remains consistent under concurrent writes.
+
+[ ] 6.06  MEDIUM / LARGE / Stage 3
+          Multi-modal input support
+          Done when: System accepts text, structured data,
+          and file attachments. Each type classified and
+          weighted appropriately. Safety checks cover all types.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 7 — ENTERPRISE READINESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 7.01  CRITICAL / LARGE / Stage 3
+          Multi-user architecture
+          Done when: Each user has isolated context field
+          and audit trail. No data leaks between users.
+          Verified by test suite.
+
+[ ] 7.02  CRITICAL / LARGE / Stage 3
+          REST API layer
+          Done when: All five loop steps accessible via API.
+          Authentication required. Rate limited.
+          OpenAPI specification published.
+
+[ ] 7.03  HIGH / MEDIUM / Stage 3
+          Docker container
+          Done when: Single docker run command starts system.
+          Image published to Docker Hub.
+          Tested on Mac, Linux, and Windows.
+
+[ ] 7.04  HIGH / LARGE / Stage 3
+          Compliance audit export
+          Done when: Audit trail exportable in CSV, JSON,
+          and PDF formats. Fields mapped to common
+          compliance frameworks. Reviewed by counsel.
+
+[ ] 7.05  HIGH / MEDIUM / Stage 3
+          Vendor security questionnaire
+          Done when: Standard 200-question security
+          questionnaire pre-completed and maintained.
+          Updated quarterly.
+
+[ ] 7.06  MEDIUM / LARGE / Stage 3
+          SLA framework
+          Done when: Uptime, response time, and support
+          SLAs documented. Monitoring in place.
+          Incident response process established.
+
+[ ] 7.07  MEDIUM / LARGE / Stage 3
+          Enterprise onboarding playbook
+          Done when: Step by step guide for enterprise
+          deployment. Covers security review, data governance,
+          user provisioning, and training.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAUNCH READINESS SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MINIMUM for Public Launch (General Audience):
+  All CRITICAL items in Sections 1, 2, 3, 4, and 5
+  Items: 1.01-1.05, 2.01-2.03, 3.01-3.03, 4.01-4.03, 5.01-5.06
+
+MINIMUM for Enterprise Pilot:
+  All of the above PLUS
+  All HIGH items in Sections 2, 4, 6
+  Items 7.01-7.03
+
+FULL ENTERPRISE LAUNCH:
+  All items in all sections complete.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CURRENT STATUS — Version 1.0 MVP
+
+[✅] Principles written, sealed, and hash-verified
+[✅] Core modules written and syntax-verified
+[✅] Full loop tested end to end
+[✅] Safety flags tested — all three patterns pass
+[✅] Memory append-only triggers confirmed
+[✅] MIT license applied
+[✅] Repository published publicly
+[✅] Preservation document written
+[✅] Project record document created
+[✅] README complete with install instructions
+[✅] Gist published with verified hash
+
+Remaining items: 48
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This document is part of the permanent record of ONTO.
+It is updated as items are completed.
+It is honest about what is not yet done.
+That is the only way trust is built.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
