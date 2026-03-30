@@ -62,6 +62,11 @@ jobs:
           print('[OK] Principles verified and intact.')
           "
 
+      - name: Scan dependencies for vulnerabilities
+        run: |
+          pip install pip-audit
+          pip-audit --desc
+
       - name: Run test suite
         run: |
           pytest tests/ -v --tb=short
