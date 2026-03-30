@@ -65,7 +65,7 @@ jobs:
       - name: Scan dependencies for vulnerabilities
         run: |
           pip install pip-audit
-          pip-audit --desc
+          pip-audit -r requirements-test.txt --desc
 
       - name: Run test suite
         run: |
