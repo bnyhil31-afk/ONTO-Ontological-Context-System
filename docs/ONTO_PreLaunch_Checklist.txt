@@ -62,7 +62,7 @@ SECTION 1 — CODE QUALITY & TESTING
           Done when: System handles all without crashing.
           Behavior documented for each case.
 
-[ ] 1.09  HIGH / SMALL / Stage 1
+[✅] 1.09  HIGH / SMALL / Stage 1
           Add a CHANGELOG.md
           Done when: Every version change is documented with
           date, description, and reason. Starting from v1.0.
@@ -201,7 +201,7 @@ SECTION 3 — DOCUMENTATION & ONBOARDING
           parameter documented. Input and output types clear.
           Examples provided for every function.
 
-[ ] 3.05  HIGH / SMALL / Stage 1
+[✅] 3.05  HIGH / SMALL / Stage 1
           CONTRIBUTING.md
           Done when: Clear guidelines for how to contribute.
           References the principles explicitly.
