@@ -1,28 +1,49 @@
 ONTO — PRE-LAUNCH CHECKLIST UPDATE
-Session: 2026-03-30
-Previous version: v4 (39 remaining)
-This version: v5
+Session: 2026-03-30 (continued)
+Previous version: v5 (38 remaining)
+This version: v6
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANGES FROM v4 TO v5
+CHANGES FROM v5 TO v6
 
-1. MARK COMPLETE — Item 1.11
-   Change: [ ] 1.11 → [✅] 1.11
-   Note: Was previously marked done but CI was not actually green.
-         Now fully confirmed — 5 Python versions, all passing.
+1. MARK COMPLETE — Item 1.12
+   Change: [ ] 1.12 → [✅] 1.12
+   Note: 16 conformance tests added in tests/test_conformance.py
+         All three ratification conditions now fully met.
 
-2. ADD NEW ITEM — Item 1.12 (insert after 1.11)
+2. MARK COMPLETE — Item 2.03
+   Change: [ ] 2.03 → [✅] 2.03
+   Note: Already completed as part of items 1.07 and 1.08.
+         SQL injection, command injection, path traversal all handled.
+         Formally closed this session.
 
-[ ] 1.12  CRITICAL / MEDIUM / Stage 1
-          Conformance tests for four core functions
-          Done when: Test suite includes at least one test each
-          for RELATE, NAVIGATE, GOVERN, and REMEMBER verifying
-          conformance with CROSSOVER_CONTRACT_v1.0 definitions.
-          This closes the third ratification condition.
-          Reference: docs/CROSSOVER_CONTRACT_v1.0.md
+3. MARK COMPLETE — Item 2.05
+   Change: [ ] 2.05 → [✅] 2.05
+   Note: core/ratelimit.py — sliding window rate limiter.
+         Default: 60 inputs per 60 seconds. Configurable via env.
+         Tests in tests/test_security.py.
 
-3. UPDATE CURRENT STATUS SECTION
+4. MARK COMPLETE — Item 2.06
+   Change: [ ] 2.06 → [✅] 2.06
+   Note: principles.hash integrity tests added.
+         SHA-256 algorithm verified. Tamper detection confirmed.
+         Tests in tests/test_security.py.
+
+5. MARK COMPLETE — Item 2.07
+   Change: [ ] 2.07 → [✅] 2.07
+   Note: pip-audit added to CI workflow.
+         Scans requirements-test.txt on every push.
+         ONTO has zero vulnerable dependencies confirmed.
+
+6. MARK COMPLETE — Item 2.11
+   Change: [ ] 2.11 → [✅] 2.11
+   Note: core/config.py — all config loads from environment variables.
+         .env.example published — documents every variable.
+         .env in .gitignore — secrets cannot be committed.
+         Tests in tests/test_security.py.
+
+7. UPDATE CURRENT STATUS SECTION
    Replace the current status block at the bottom with this:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -39,30 +60,37 @@ CURRENT STATUS — Version 1.0 MVP
 [✅] Preservation document written
 [✅] Project record document created
 [✅] README complete with install instructions
-[✅] Gist published — now contains 3 sealed hashes
-[✅] 1.01 — Test suite — 108 tests, all passing
-[✅] 1.02 — Principle verification tested — pass and fail confirmed
-[✅] 1.03 — Safety flag detection tested — all three patterns pass
+[✅] Gist published — 3 sealed hashes recorded
+[✅] 1.01 — Test suite — 136 tests, all passing
+[✅] 1.02 — Principle verification tested
+[✅] 1.03 — Safety flag detection tested
 [✅] 1.04 — Memory append-only enforcement confirmed
 [✅] 1.05 — Full five-step loop tested end to end
 [✅] 1.06 — Type hints added to all 7 modules
 [✅] 1.07 — Input sanitization layer in intake.py
-[✅] 1.08 — Edge case and sanitization tests — 108 total
+[✅] 1.08 — Edge case and sanitization tests — 108 base tests
 [✅] 1.09 — CHANGELOG.md — full history documented
-[✅] 1.10 — .flake8 linting config added
+[✅] 1.10 — .flake8 linting config
 [✅] 1.11 — GitHub Actions CI — green across Python 3.8–3.12
-[✅] 1.12 — (pending — conformance tests next session)
-[✅] 3.05 — CONTRIBUTING.md — contributor guidelines
-[✅] 5.05 — Line endings protection — .gitattributes in place
-[✅] NEW — CROSSOVER_CONTRACT_v1.0 written, sealed, on GitHub
-           Hash: 8ff5fbf86f77a46f0c56b2b520b1a7273c82805ff2cb9bd93c133a534558452d
-[✅] NEW — CRE-SPEC-001 v0.6 written, sealed, on GitHub
-           Hash: af1c04c4548bb3f2b862cda8390b088b688e5620f151ee4b08a1e78a5550c13e
+[✅] 1.12 — Conformance tests — 16 tests, ratification complete
+[✅] 2.03 — Input sanitization against injection attacks
+[✅] 2.05 — Rate limiting — core/ratelimit.py
+[✅] 2.06 — principles.hash protection — tests in place
+[✅] 2.07 — Dependency scanning — pip-audit in CI
+[✅] 2.11 — Environment variable config — core/config.py
+[✅] 3.05 — CONTRIBUTING.md
+[✅] 5.05 — Line endings protection
+[✅] NEW — CROSSOVER_CONTRACT_v1.0 sealed on GitHub
+[✅] NEW — CRE-SPEC-001 v0.6 sealed on GitHub
 [✅] NEW — Gist updated — all three document hashes recorded
 
 RULE: 1.09A — Code, tests, and documentation must always agree.
 
-Remaining items: 38
+Tests: 136 passing across Python 3.8–3.12
+CI: green ✅
+Ratification: all 3 conditions met ✅
+
+Remaining items: 31
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
