@@ -4,7 +4,7 @@ modules/intake.py
 The system's front door.
 Every input — from any source — comes through here first.
 Nothing reaches the rest of the system without being received,
-classified, and cleared for safety.
+classified, sanitized, and cleared for safety.
 
 Plain English: This is the ear of the system.
 It listens to everything. It judges nothing yet.
@@ -14,8 +14,16 @@ This is Principles II (Life First) and V (Do No Harm) — in code.
 """
 
 import re
-from typing import Dict, List, Optional, Tuple, Any
+import unicodedata
+from typing import Any, Dict, List, Optional, Tuple
 from modules import memory
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIMITS
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAX_INPUT_LENGTH: int = 50000   # Characters. Inputs beyond this are truncated.
+MAX_WORD_COUNT: int = 10000     # Words. Complexity capped at this size.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INPUT TYPES — WHAT KIND OF THING ARRIVED?
@@ -67,23 +75,25 @@ def receive(raw_input: str, source: str = "human") -> Dict[str, Any]:
     Returns:
         Dict containing:
             raw         — exactly what came in, unchanged
-            clean       — trimmed, normalized
+            clean       — trimmed, sanitized
             input_type  — what kind of input this is
             source      — where it came from
             word_count  — how many words it contains
             complexity  — simple / moderate / complex
             safety      — None if clear, or a safety flag dict
+            sanitized   — True if input required sanitization
+            truncated   — True if input was truncated due to length
             record_id   — permanent audit record ID
     """
-    # Clean without altering meaning
-    clean: str = raw_input.strip()
+    # Sanitize — always before anything else
+    clean, sanitized, truncated = _sanitize(raw_input)
 
     # Classify
     input_type: str = _classify(clean)
-    word_count: int = len(clean.split())
+    word_count: int = min(len(clean.split()), MAX_WORD_COUNT)
     complexity: str = _estimate_complexity(clean, word_count)
 
-    # Safety check — always runs first
+    # Safety check — always runs
     safety_flag: Optional[Dict[str, Any]] = _check_safety(clean)
 
     # Build the package
@@ -95,6 +105,8 @@ def receive(raw_input: str, source: str = "human") -> Dict[str, Any]:
         "word_count": word_count,
         "complexity": complexity,
         "safety": safety_flag,
+        "sanitized": sanitized,
+        "truncated": truncated,
         "record_id": None
     }
 
@@ -102,7 +114,13 @@ def receive(raw_input: str, source: str = "human") -> Dict[str, Any]:
     record_id: int = memory.record(
         event_type="INTAKE",
         input_data=clean,
-        context={"type": input_type, "source": source, "complexity": complexity},
+        context={
+            "type": input_type,
+            "source": source,
+            "complexity": complexity,
+            "sanitized": sanitized,
+            "truncated": truncated
+        },
         notes=f"Safety flag: {safety_flag['level'] if safety_flag else 'None'}"
     )
     package["record_id"] = record_id
@@ -116,6 +134,71 @@ def receive(raw_input: str, source: str = "human") -> Dict[str, Any]:
         )
 
     return package
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SANITIZATION — CLEAN WITHOUT ALTERING MEANING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _sanitize(text: str) -> Tuple[str, bool, bool]:
+    """
+    Cleans input without altering its meaning.
+    Removes dangerous characters, normalizes whitespace,
+    and enforces length limits.
+
+    Plain English: Makes the input safe to work with
+    without changing what the person actually said.
+
+    Args:
+        text: The raw input string.
+
+    Returns:
+        Tuple of:
+            str  — the cleaned input
+            bool — True if sanitization changed anything
+            bool — True if the input was truncated
+    """
+    original: str = text
+    truncated: bool = False
+
+    # Step 1 — Enforce length limit
+    if len(text) > MAX_INPUT_LENGTH:
+        text = text[:MAX_INPUT_LENGTH]
+        truncated = True
+
+    # Step 2 — Strip null bytes and other control characters
+    # Keep: printable characters, newlines, tabs
+    # Remove: null bytes, other ASCII control chars, Unicode control chars
+    text = "".join(
+        c for c in text
+        if c in ("\n", "\t") or (
+            not unicodedata.category(c).startswith("C")
+        )
+    )
+
+    # Step 3 — Strip Unicode bidirectional control characters
+    # These can be used to disguise malicious text visually
+    bidi_controls: List[str] = [
+        "\u200e", "\u200f",  # LRM, RLM
+        "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # Embedding controls
+        "\u2066", "\u2067", "\u2068", "\u2069",  # Isolate controls
+    ]
+    for char in bidi_controls:
+        text = text.replace(char, "")
+
+    # Step 4 — Normalize whitespace
+    # Collapse multiple spaces, normalize line endings
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Step 5 — Strip leading and trailing whitespace
+    text = text.strip()
+
+    sanitized: bool = (text != original.strip() and not truncated) or (
+        truncated and text != original[:MAX_INPUT_LENGTH].strip()
+    )
+
+    return text, sanitized, truncated
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,7 +260,6 @@ def _estimate_complexity(text: str, word_count: int) -> str:
     Returns:
         str: One of 'simple', 'moderate', or 'complex'.
     """
-    # Size factor
     size: str
     if word_count <= 5:
         size = "small"
@@ -186,7 +268,6 @@ def _estimate_complexity(text: str, word_count: int) -> str:
     else:
         size = "large"
 
-    # Sentence count as proxy for complexity
     sentence_count: int = max(1, len(re.split(r'[.!?]+', text)))
 
     if sentence_count == 1 and size == "small":
