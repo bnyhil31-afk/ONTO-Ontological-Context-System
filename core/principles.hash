@@ -1,6 +1,6 @@
 {
-  "sealed_at": "2026-01-01T00:00:00+00:00",
-  "hash": "b1d3054f646c5f3abaffd3a275683949aef426d135cf823e7b3665fb06a03ba5",
+  "sealed_at": "2026-03-30T00:00:00+00:00",
+  "hash": "4f7b303395e4b38fd3bc290c529c3b0ec7f717bf9c89764e215c4f7a9596527d",
   "file": "principles.txt",
   "algorithm": "SHA-256",
   "note": "This hash was computed at the moment the principles were finalized. It cannot be changed. Any modification to principles.txt will cause the system to refuse to operate."
