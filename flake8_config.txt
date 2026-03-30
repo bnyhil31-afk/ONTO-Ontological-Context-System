@@ -1,0 +1,32 @@
+[flake8]
+# ONTO — Linting Configuration
+# Enforces consistent code style across all Python files.
+# Run with: flake8 .
+
+# Maximum line length
+# 88 characters — matches Black formatter standard
+max-line-length = 88
+
+# Files and directories to ignore
+exclude =
+    .git,
+    __pycache__,
+    data/,
+    .eggs,
+    *.egg
+
+# Error codes to ignore
+extend-ignore =
+    # E203: whitespace before ':' — conflicts with Black formatting
+    E203,
+    # W503: line break before binary operator — conflicts with Black
+    W503
+
+# Show source code for each error
+show-source = true
+
+# Show pep8 error codes
+show-pep8 = true
+
+# Count total errors
+count = true
