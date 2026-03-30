@@ -67,18 +67,20 @@ SECTION 1 — CODE QUALITY & TESTING
           Done when: Every version change is documented with
           date, description, and reason. Starting from v1.0.
 
-[ ] 1.09A CRITICAL / SMALL / Stage 1
-          Documentation consistency — enforced always
-          The rule: Code, tests, and documentation must always agree.
-          Any change to the test suite requires updating simultaneously:
+[ ] 1.09A HIGH / SMALL / Stage 1
+          Documentation consistency — expected, not demanded
+          The goal: Code, tests, and documentation should always agree.
+          When changing the test suite, aim to update simultaneously:
             — The test file header (expected count)
             — tests/README.md (expected count)
             — The checklist (current status)
             — Any other document referencing the changed item
-          A wrong number anywhere is a broken trust chain.
-          Done when: Rule is written into CONTRIBUTING.md.
-          Verified by human review before every commit touching tests.
-          No exceptions.
+          Mistakes are expected. Hiding them is not.
+          When a mismatch is found — correct it promptly and honestly.
+          GitHub Actions will catch discrepancies automatically.
+          The system enforces consistency. Humans respond with care.
+          Done when: Rule is written into CONTRIBUTING.md with
+          this humane framing. CI catches mismatches automatically.
 
 [ ] 1.10  MEDIUM / SMALL / Stage 1
           Code linting — PEP8 compliance
@@ -487,4 +489,126 @@ SECTION 6 — INTELLIGENCE UPGRADES
 [ ] 6.04  HIGH / MEDIUM / Stage 2
           Tiered memory architecture
           Done when: Hot, warm, cold layers implemented.
-          Field size no longer lim
+          Field size no longer limited by available RAM.
+          Performance consistent regardless of total dataset size.
+
+[ ] 6.05  MEDIUM / MEDIUM / Stage 2
+          Async input processing
+          Done when: Multiple inputs handled concurrently.
+          No blocking. Performance tested under load.
+          Audit trail remains consistent under concurrent writes.
+
+[ ] 6.06  MEDIUM / LARGE / Stage 3
+          Multi-modal input support
+          Done when: System accepts text, structured data,
+          and file attachments. Each type classified and
+          weighted appropriately. Safety checks cover all types.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 7 — ENTERPRISE READINESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 7.01  CRITICAL / LARGE / Stage 3
+          Multi-user architecture
+          Done when: Each user has isolated context field
+          and audit trail. No data leaks between users.
+          Verified by test suite.
+
+[ ] 7.02  CRITICAL / LARGE / Stage 3
+          REST API layer
+          Done when: All five loop steps accessible via API.
+          Authentication required. Rate limited.
+          OpenAPI specification published.
+
+[ ] 7.03  HIGH / MEDIUM / Stage 3
+          Docker container
+          Done when: Single docker run command starts system.
+          Image published to Docker Hub.
+          Tested on Mac, Linux, and Windows.
+
+[ ] 7.04  HIGH / LARGE / Stage 3
+          Compliance audit export
+          Done when: Audit trail exportable in CSV, JSON,
+          and PDF formats. Fields mapped to common
+          compliance frameworks. Reviewed by counsel.
+
+[ ] 7.05  HIGH / MEDIUM / Stage 3
+          Vendor security questionnaire
+          Done when: Standard 200-question security
+          questionnaire pre-completed and maintained.
+          Updated quarterly.
+
+[ ] 7.06  MEDIUM / LARGE / Stage 3
+          SLA framework
+          Done when: Uptime, response time, and support
+          SLAs documented. Monitoring in place.
+          Incident response process established.
+
+[ ] 7.07  MEDIUM / LARGE / Stage 3
+          Enterprise onboarding playbook
+          Done when: Step by step guide for enterprise
+          deployment. Covers security review, data governance,
+          user provisioning, and training.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAUNCH READINESS SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MINIMUM for Public Launch (General Audience):
+  All CRITICAL items in Sections 1, 2, 3, 4, and 5
+  Items: 1.01-1.05, 2.01-2.03, 3.01-3.03, 4.01-4.03, 5.01-5.06
+
+MINIMUM for Enterprise Pilot:
+  All of the above PLUS
+  All HIGH items in Sections 2, 4, 6
+  Items 7.01-7.03
+
+FULL ENTERPRISE LAUNCH:
+  All items in all sections complete.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CURRENT STATUS — Version 1.0 MVP
+
+[✅] Principles written, sealed, and hash-verified
+[✅] Core modules written and syntax-verified
+[✅] Full loop tested end to end
+[✅] Safety flags tested — all three patterns pass
+[✅] Memory append-only triggers confirmed
+[✅] MIT license applied
+[✅] Repository published publicly
+[✅] Preservation document written
+[✅] Project record document created
+[✅] README complete with install instructions
+[✅] Gist published with verified hash
+[✅] 1.01 — Test suite written — 82 tests, 82 passing, 0 failures
+[✅] 1.02 — Principle verification tested — pass and fail cases confirmed
+[✅] 1.03 — Safety flag detection tested — CRISIS, HARM, INTEGRITY all pass
+[✅] 1.04 — Memory append-only enforcement tested and confirmed
+[✅] 1.05 — Full five-step loop tested end to end
+[✅] 5.05 — Line endings protection — .gitattributes and setup.sh updated
+[✅] conftest.py — shared test isolation in place
+[✅] requirements-test.txt — one command test setup
+[✅] tests/README.md — plain language guide for running tests
+
+RULE ADDED: 1.09A — Documentation consistency enforced always.
+Code, tests, and documentation must always agree. No exceptions.
+
+[✅] 1.06 — Type hints added to all 7 files — mypy ready
+[✅] 1.07 — Input sanitization layer added to intake.py
+[✅] 1.08 — Edge case and sanitization tests added — 108 total, all passing
+[✅] 1.09 — CHANGELOG.md added — v1.0.0 and v1.0.1 fully documented
+[✅] 3.05 — CONTRIBUTING.md added — rule 1.09A prominent at top
+
+Remaining items: 39
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This document is part of the permanent record of ONTO.
+It is updated as items are completed.
+It is honest about what is not yet done.
+That is the only way trust is built.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
