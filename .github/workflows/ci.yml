@@ -53,7 +53,7 @@ jobs:
           python3 -c "
           import sys
           sys.path.insert(0, '.')
-          from modules.verify import verify_principles
+          from core.verify import verify_principles
           result = verify_principles()
           if not result:
               print('PRINCIPLES VERIFICATION FAILED.')
