@@ -93,7 +93,10 @@ def run(
             confidence=confidence,
             notes="Routine input — checkpoint skipped. Auto-proceeded."
         )
-        print(f"\n  [AUTO] Routine input. Proceeding. (Confidence: {confidence*100:.0f}%)")
+        print(
+            f"\n  [AUTO] Routine input. Proceeding. "
+            f"(Confidence: {confidence*100:.0f}%)"
+        )
         return {
             "decision": "AUTO_PROCEED",
             "action": "PROCEED",
@@ -107,7 +110,10 @@ def run(
     print("  └─────────────────────────────────────────────────────────┘")
 
     if confidence <= ALWAYS_ASK_CONFIDENCE:
-        print(f"  (My confidence is low: {confidence*100:.0f}%. Your judgment matters here.)\n")
+        print(
+            f"  (My confidence is low: {confidence*100:.0f}%. "
+            f"Your judgment matters here.)\n"
+        )
 
     decision = _ask_human(
         prompt="How would you like to proceed?",
