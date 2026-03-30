@@ -8,15 +8,21 @@ They are the foundation everything else is built on.
 
 ---
 
-## The Most Important Rule — 1.09A
+## The Documentation Consistency Goal — 1.09A
 
-Any change to the test suite requires updating three things together:
+When changing the test suite, aim to update these three things together:
   - The test file header (expected count)
   - tests/README.md (expected count)
   - docs/ONTO_PreLaunch_Checklist.txt (current status)
 
-All three or none. A wrong number anywhere breaks trust.
-Code, tests, and documentation must always agree.
+This is a goal, not a punishment.
+
+Mistakes happen. If you miss one — that is human and expected.
+When a mismatch is found — correct it promptly and honestly.
+GitHub Actions will catch discrepancies automatically.
+The system enforces consistency so people don't have to be perfect.
+
+The goal is accuracy over time, not perfection in the moment.
 
 ---
 
@@ -102,6 +108,19 @@ and ask before writing the code. That is always welcome.
 
 ---
 
+## On Mistakes
+
+Everyone makes mistakes. That includes the people who built this.
+
+When you make one — own it, correct it, and move on.
+No hiding. No deflection. No shame.
+That is Principle XIII — Accountability — applied to contributors.
+
+The project is better for honest mistakes acknowledged
+than for perfect appearances maintained.
+
+---
+
 ## On the Principles
 
 The 13 principles are sealed with a cryptographic hash.
@@ -119,8 +138,8 @@ They protect everyone — including future contributors.
   - Python 3.7+ compatible
   - Type hints on all functions — parameters and return values
   - Plain English docstrings on every function
-  - PEP8 compliant — run a linter before submitting
-  - No line should require scrolling to read — keep it under 88 characters
+  - PEP8 compliant — run flake8 before submitting
+  - Maximum line length: 88 characters
 
 ---
 
