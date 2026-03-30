@@ -15,7 +15,7 @@ If any test fails — something needs attention before shipping.
 ## What success looks like
 
 ```
-82 passed, 0 failed, 0 errors
+108 passed, 0 failed, 0 errors
 ```
 
 If you see anything different — something needs attention.
@@ -58,7 +58,7 @@ ERROR    — something unexpected happened
 
 At the end you will see a summary:
 ```
-82 passed in 4.2s
+108 passed in 5.8s
 ```
 
 ---
@@ -75,7 +75,7 @@ Target: above 80% for all critical modules.
 
 ---
 
-## Run a single test
+## Run a single test class
 
 ```bash
 pytest tests/test_onto.py::TestMemory -v
@@ -111,15 +111,17 @@ Results will look slightly different but test the same things.
 
 ## What each test class covers
 
-| Class | What it tests |
-|---|---|
-| TestSmoke | System boots, principles verify, memory initializes |
-| TestVerify | Cryptographic hash protection of the principles |
-| TestMemory | Permanent append-only audit trail |
-| TestIntake | Input receiving, classification, safety detection |
-| TestContextualize | Living field and context building |
-| TestSurface | Honest plain language output |
-| TestFullLoop | All five steps working together end to end |
+Class             | Tests | What it covers
+------------------|-------|-----------------------------------------------
+TestSmoke         |   4   | System boots, principles verify, memory initializes
+TestVerify        |  10   | Cryptographic hash protection of the principles
+TestMemory        |  15   | Permanent append-only audit trail
+TestIntake        |  22   | Input receiving, classification, safety detection
+TestContextualize |  12   | Living field and context building
+TestSurface       |  11   | Honest plain language output
+TestFullLoop      |   8   | All five steps working together end to end
+TestSanitization  |  14   | Input sanitization — dangerous character handling
+TestEdgeCases     |  12   | Unusual but real situations the system may encounter
 
 ---
 
@@ -134,5 +136,16 @@ Listen to it.
 
 ---
 
-*These tests exist because the system makes promises.
-The tests make sure the system keeps them.*
+## Keeping the count accurate — Rule 1.09A
+
+Any change to the test suite requires updating three things together:
+  - The test file header (expected count)
+  - This README (expected count)
+  - The pre-launch checklist (current status)
+
+All three or none. A wrong number anywhere breaks trust.
+
+---
+
+These tests exist because the system makes promises.
+The tests make sure the system keeps them.
