@@ -1,0 +1,100 @@
+name: ONTO — Tests and Linting
+
+# Plain English: This runs automatically every time code is
+# pushed to the repository or a pull request is opened.
+# If tests fail or code style is wrong — the check fails.
+# Nothing merges to main with a failing check.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests and Linting
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+          pip install flake8
+
+      - name: Normalize line endings
+        run: |
+          # Protect the principles hash from line ending differences
+          python3 -c "
+          path = 'principles.txt'
+          with open(path, 'rb') as f:
+              content = f.read()
+          normalized = content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+          if normalized != content:
+              with open(path, 'wb') as f:
+                  f.write(normalized)
+              print('Line endings normalized.')
+          else:
+              print('Line endings already correct.')
+          "
+
+      - name: Seal and verify principles
+        run: |
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          from core.verify import seal_principles, verify_principles
+          seal_principles()
+          verify_principles()
+          print('[OK] Principles verified.')
+          "
+
+      - name: Initialize memory
+        run: |
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          from modules import memory
+          memory.initialize()
+          print('[OK] Memory initialized.')
+          "
+
+      - name: Run linting
+        run: |
+          flake8 . --count --statistics
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Verify test count
+        run: |
+          # Confirms the expected number of tests ran
+          # Update this number whenever tests are added
+          python3 -c "
+          import subprocess
+          result = subprocess.run(
+              ['python3', '-m', 'unittest', 'tests.test_onto'],
+              capture_output=True, text=True
+          )
+          output = result.stderr
+          if 'Ran 108 tests' in output and 'OK' in output:
+              print('[OK] Expected 108 tests — all passing.')
+          else:
+              print('[FAIL] Unexpected test result:')
+              print(output)
+              exit(1)
+          "
