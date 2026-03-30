@@ -21,41 +21,41 @@ Never ship with an unchecked CRITICAL item.
 SECTION 1 — CODE QUALITY & TESTING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[ ] 1.01  CRITICAL / SMALL / Stage 1
+[✅] 1.01  CRITICAL / SMALL / Stage 1
           Write pytest test suite — core modules
           Done when: Every module has tests. All pass. Coverage above 80%.
 
-[ ] 1.02  CRITICAL / SMALL / Stage 1
+[✅] 1.02  CRITICAL / SMALL / Stage 1
           Test principle verification — pass and fail cases
           Done when: System halts correctly on tampered principles.
           System passes on intact principles. Both verified by test.
 
-[ ] 1.03  CRITICAL / SMALL / Stage 1
+[✅] 1.03  CRITICAL / SMALL / Stage 1
           Test safety flag detection — all three patterns
           Done when: CRISIS, HARM, INTEGRITY all trigger correctly.
           False positives measured and documented.
 
-[ ] 1.04  CRITICAL / SMALL / Stage 1
+[✅] 1.04  CRITICAL / SMALL / Stage 1
           Test memory append-only enforcement
           Done when: Delete and update triggers confirmed active.
           Attempt to delete a record fails with correct error message.
 
-[ ] 1.05  CRITICAL / MEDIUM / Stage 1
+[✅] 1.05  CRITICAL / MEDIUM / Stage 1
           Test full five-step loop end to end
           Done when: Input enters at intake and exits at checkpoint
           with correct output at every stage. Recorded in memory.
 
-[ ] 1.06  HIGH / SMALL / Stage 1
+[✅] 1.06  HIGH / SMALL / Stage 1
           Add Python type hints to all functions
           Done when: Every function has typed parameters and return values.
           mypy runs clean with zero errors.
 
-[ ] 1.07  HIGH / SMALL / Stage 1
+[✅] 1.07  HIGH / SMALL / Stage 1
           Add input sanitization to intake.py
           Done when: SQL injection, script injection, and
           malformed unicode handled gracefully without crashing.
 
-[ ] 1.08  HIGH / MEDIUM / Stage 1
+[✅] 1.08  HIGH / MEDIUM / Stage 1
           Edge case testing — empty input, very long input,
           special characters, non-English text, numbers only,
           binary data, extremely rapid repeated inputs.
@@ -372,7 +372,7 @@ They are documented here so they are discovered on purpose.
           Community discussion mechanism exists.
           Distinction between principles and configuration clear.
 
-[ ] 5.05  HIGH / SMALL / Stage 1
+[✅] 5.05  HIGH / SMALL / Stage 1
           Cross-platform line endings
           The problem: principles.txt hash will differ between
           Windows CRLF and Unix LF line endings.
@@ -487,120 +487,4 @@ SECTION 6 — INTELLIGENCE UPGRADES
 [ ] 6.04  HIGH / MEDIUM / Stage 2
           Tiered memory architecture
           Done when: Hot, warm, cold layers implemented.
-          Field size no longer limited by available RAM.
-          Performance consistent regardless of total dataset size.
-
-[ ] 6.05  MEDIUM / MEDIUM / Stage 2
-          Async input processing
-          Done when: Multiple inputs handled concurrently.
-          No blocking. Performance tested under load.
-          Audit trail remains consistent under concurrent writes.
-
-[ ] 6.06  MEDIUM / LARGE / Stage 3
-          Multi-modal input support
-          Done when: System accepts text, structured data,
-          and file attachments. Each type classified and
-          weighted appropriately. Safety checks cover all types.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-SECTION 7 — ENTERPRISE READINESS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[ ] 7.01  CRITICAL / LARGE / Stage 3
-          Multi-user architecture
-          Done when: Each user has isolated context field
-          and audit trail. No data leaks between users.
-          Verified by test suite.
-
-[ ] 7.02  CRITICAL / LARGE / Stage 3
-          REST API layer
-          Done when: All five loop steps accessible via API.
-          Authentication required. Rate limited.
-          OpenAPI specification published.
-
-[ ] 7.03  HIGH / MEDIUM / Stage 3
-          Docker container
-          Done when: Single docker run command starts system.
-          Image published to Docker Hub.
-          Tested on Mac, Linux, and Windows.
-
-[ ] 7.04  HIGH / LARGE / Stage 3
-          Compliance audit export
-          Done when: Audit trail exportable in CSV, JSON,
-          and PDF formats. Fields mapped to common
-          compliance frameworks. Reviewed by counsel.
-
-[ ] 7.05  HIGH / MEDIUM / Stage 3
-          Vendor security questionnaire
-          Done when: Standard 200-question security
-          questionnaire pre-completed and maintained.
-          Updated quarterly.
-
-[ ] 7.06  MEDIUM / LARGE / Stage 3
-          SLA framework
-          Done when: Uptime, response time, and support
-          SLAs documented. Monitoring in place.
-          Incident response process established.
-
-[ ] 7.07  MEDIUM / LARGE / Stage 3
-          Enterprise onboarding playbook
-          Done when: Step by step guide for enterprise
-          deployment. Covers security review, data governance,
-          user provisioning, and training.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-LAUNCH READINESS SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-MINIMUM for Public Launch (General Audience):
-  All CRITICAL items in Sections 1, 2, 3, 4, and 5
-  Items: 1.01-1.05, 2.01-2.03, 3.01-3.03, 4.01-4.03, 5.01-5.06
-
-MINIMUM for Enterprise Pilot:
-  All of the above PLUS
-  All HIGH items in Sections 2, 4, 6
-  Items 7.01-7.03
-
-FULL ENTERPRISE LAUNCH:
-  All items in all sections complete.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-CURRENT STATUS — Version 1.0 MVP
-
-[✅] Principles written, sealed, and hash-verified
-[✅] Core modules written and syntax-verified
-[✅] Full loop tested end to end
-[✅] Safety flags tested — all three patterns pass
-[✅] Memory append-only triggers confirmed
-[✅] MIT license applied
-[✅] Repository published publicly
-[✅] Preservation document written
-[✅] Project record document created
-[✅] README complete with install instructions
-[✅] Gist published with verified hash
-[✅] 1.01 — Test suite written — 82 tests, 82 passing, 0 failures
-[✅] 1.02 — Principle verification tested — pass and fail cases confirmed
-[✅] 1.03 — Safety flag detection tested — CRISIS, HARM, INTEGRITY all pass
-[✅] 1.04 — Memory append-only enforcement tested and confirmed
-[✅] 1.05 — Full five-step loop tested end to end
-[✅] 5.05 — Line endings protection — .gitattributes and setup.sh updated
-[✅] conftest.py — shared test isolation in place
-[✅] requirements-test.txt — one command test setup
-[✅] tests/README.md — plain language guide for running tests
-
-RULE ADDED: 1.09A — Documentation consistency enforced always.
-Code, tests, and documentation must always agree. No exceptions.
-
-Remaining items: 44
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-This document is part of the permanent record of ONTO.
-It is updated as items are completed.
-It is honest about what is not yet done.
-That is the only way trust is built.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          Field size no longer lim
