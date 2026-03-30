@@ -978,3 +978,242 @@ if __name__ == "__main__":
     print("If you see anything different — something needs attention.")
     print("=" * 60 + "\n")
     unittest.main(verbosity=2)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST: SANITIZATION & EDGE CASES — Items 1.07 + 1.08
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSanitization(ONTOTestCase):
+    """
+    Tests for input sanitization — item 1.07.
+
+    Plain English: Makes sure dangerous or malformed inputs
+    are cleaned safely without crashing the system or
+    altering what the person actually said.
+
+    Expected: 14 passed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from modules import intake
+        self.intake = intake
+
+    def test_null_bytes_removed(self):
+        """
+        Null bytes are stripped from input.
+        Null bytes can cause unexpected behavior in databases and logs.
+        """
+        p = self.intake.receive("Hello\x00World")
+        self.assertNotIn("\x00", p["clean"])
+        self.assertIn("Hello", p["clean"])
+
+    def test_control_characters_removed(self):
+        """
+        ASCII control characters are stripped.
+        These can interfere with terminal display and logging.
+        """
+        p = self.intake.receive("\x01\x02\x03 hidden chars \x04\x05")
+        for i in range(1, 6):
+            self.assertNotIn(chr(i), p["clean"])
+
+    def test_bidi_override_stripped(self):
+        """
+        Unicode bidirectional control characters are removed.
+        These can be used to visually disguise malicious text —
+        making dangerous content appear harmless on screen.
+        """
+        bidi = "\u202e"  # Right-to-left override
+        p = self.intake.receive(f"Hello {bidi}World")
+        self.assertNotIn(bidi, p["clean"])
+
+    def test_multiple_spaces_normalized(self):
+        """Multiple spaces are collapsed to a single space."""
+        p = self.intake.receive("Hello     World")
+        self.assertNotIn("     ", p["clean"])
+        self.assertIn("Hello World", p["clean"])
+
+    def test_tabs_normalized(self):
+        """Tabs are normalized to single spaces."""
+        p = self.intake.receive("Hello\t\tWorld")
+        self.assertNotIn("\t\t", p["clean"])
+
+    def test_excessive_newlines_normalized(self):
+        """More than two consecutive newlines are reduced to two."""
+        p = self.intake.receive("Hello\n\n\n\n\nWorld")
+        self.assertNotIn("\n\n\n", p["clean"])
+
+    def test_very_long_input_truncated(self):
+        """
+        Input exceeding the maximum length is truncated.
+        The truncated flag is set so the system knows this happened.
+        If this fails: Extremely long inputs could cause memory issues.
+        """
+        from modules.intake import MAX_INPUT_LENGTH
+        long_input = "word " * (MAX_INPUT_LENGTH // 4)
+        p = self.intake.receive(long_input)
+        self.assertTrue(p["truncated"],
+            "Very long input should be flagged as truncated")
+        self.assertLessEqual(len(p["clean"]), MAX_INPUT_LENGTH)
+
+    def test_normal_input_not_flagged_as_sanitized(self):
+        """Normal clean input is not flagged as sanitized."""
+        p = self.intake.receive("Hello, how are you today?")
+        self.assertFalse(p["sanitized"])
+        self.assertFalse(p["truncated"])
+
+    def test_raw_input_always_preserved(self):
+        """
+        The raw field always contains the original input exactly.
+        Even when sanitization changes the clean version.
+        """
+        raw = "Hello\x00World"
+        p = self.intake.receive(raw)
+        self.assertEqual(p["raw"], raw)
+
+    def test_sanitization_recorded_in_memory(self):
+        """Sanitization status is recorded in the audit trail."""
+        self.intake.receive("Hello\x00World")
+        records = self._memory.read_by_type("INTAKE")
+        self.assertGreater(len(records), 0)
+        context = records[0].get("context", {})
+        self.assertIn("sanitized", context)
+
+    def test_sql_injection_handled_safely(self):
+        """
+        SQL injection attempts do not crash or corrupt the system.
+        Note: Memory uses parameterized queries so injection
+        cannot affect the database — this confirms it stays safe.
+        """
+        dangerous = "'; DROP TABLE events; --"
+        try:
+            p = self.intake.receive(dangerous)
+            self.assertIsNotNone(p["record_id"])
+        except Exception as e:
+            self.fail(f"SQL injection attempt crashed the system: {e}")
+
+    def test_script_injection_handled_safely(self):
+        """Script tags pass through as plain text without execution."""
+        p = self.intake.receive('<script>alert("xss")</script>')
+        self.assertIsNotNone(p)
+        self.assertIsNotNone(p["record_id"])
+
+    def test_path_traversal_handled_safely(self):
+        """Path traversal strings are treated as plain text."""
+        p = self.intake.receive("../../../etc/passwd")
+        self.assertIsNotNone(p)
+        self.assertIsNotNone(p["record_id"])
+
+    def test_whitespace_only_input_handled(self):
+        """Whitespace-only input is classified as unknown without error."""
+        p = self.intake.receive("     ")
+        self.assertEqual(p["input_type"], "unknown")
+        self.assertEqual(p["clean"], "")
+
+
+class TestEdgeCases(ONTOTestCase):
+    """
+    Edge case tests — item 1.08.
+
+    Plain English: Tests for unusual but real situations
+    the system might encounter. Every case is documented
+    with why it matters.
+
+    Expected: 12 passed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from modules import intake, contextualize, surface
+        self.intake = intake
+        self.contextualize = contextualize
+        self.surface = surface
+
+    def test_empty_string_handled(self):
+        """Empty string does not crash the system."""
+        p = self.intake.receive("")
+        self.assertEqual(p["input_type"], "unknown")
+        self.assertIsNotNone(p["record_id"])
+
+    def test_single_character_handled(self):
+        """A single character is handled correctly."""
+        p = self.intake.receive("a")
+        self.assertIsNotNone(p)
+        self.assertEqual(p["word_count"], 1)
+
+    def test_only_punctuation_handled(self):
+        """Input containing only punctuation does not crash."""
+        p = self.intake.receive("!@#$%^&*()")
+        self.assertIsNotNone(p)
+
+    def test_very_long_single_word_handled(self):
+        """A single word with no spaces of extreme length is handled."""
+        long_word = "a" * 1000
+        p = self.intake.receive(long_word)
+        self.assertIsNotNone(p)
+        self.assertEqual(p["word_count"], 1)
+
+    def test_repeated_identical_inputs_handled(self):
+        """
+        The same input received many times does not corrupt state.
+        The system should become more familiar — not break.
+        """
+        for _ in range(20):
+            p = self.intake.receive("Hello world")
+            self.assertIsNotNone(p["record_id"])
+
+    def test_mixed_language_input_handled(self):
+        """Input mixing multiple languages does not crash."""
+        p = self.intake.receive("Hello 你好 مرحبا Héllo Wörld")
+        self.assertIsNotNone(p)
+
+    def test_emoji_input_handled(self):
+        """Emoji characters do not crash the system."""
+        p = self.intake.receive("Hello 🌍 World 🤝")
+        self.assertIsNotNone(p)
+
+    def test_newline_only_input_handled(self):
+        """Input containing only newlines is handled gracefully."""
+        p = self.intake.receive("\n\n\n\n")
+        self.assertEqual(p["input_type"], "unknown")
+
+    def test_number_with_formatting_handled(self):
+        """Formatted numbers like currency are classified as numbers."""
+        p = self.intake.receive("$1,234.56")
+        self.assertEqual(p["input_type"], "number")
+
+    def test_contextualize_handles_empty_clean(self):
+        """
+        Contextualize handles a package with an empty clean field.
+        This could happen after heavy sanitization.
+        """
+        package = {
+            "clean": "",
+            "raw": "\x00\x01",
+            "input_type": "unknown",
+            "complexity": "simple",
+            "word_count": 0,
+            "safety": None,
+            "source": "human",
+            "record_id": 1
+        }
+        try:
+            enriched = self.contextualize.build(package)
+            self.assertIn("context", enriched)
+        except Exception as e:
+            self.fail(f"Contextualize crashed on empty clean: {e}")
+
+    def test_surface_handles_zero_confidence(self):
+        """Surface handles a confidence score of exactly zero."""
+        enriched = self._make_enriched(distance=1.0)  # confidence = 0.0
+        result = self.surface.present(enriched)
+        self.assertIsNotNone(result["display"])
+        self.assertAlmostEqual(result["confidence"], 0.0, places=2)
+
+    def test_surface_handles_max_confidence(self):
+        """Surface handles a confidence score of exactly one."""
+        enriched = self._make_enriched(distance=0.0)  # confidence = 1.0
+        result = self.surface.present(enriched)
+        self.assertIsNotNone(result["display"])
+        self.assertAlmostEqual(result["confidence"], 1.0, places=2)
