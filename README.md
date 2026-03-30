@@ -39,7 +39,7 @@ Read them. They are short and written in plain language.
 ### Verified Principles Hash
 
 ```
-b1d3054f646c5f3abaffd3a275683949aef426d135cf823e7b3665fb06a03ba5
+4f7b303395e4b38fd3bc290c529c3b0ec7f717bf9c89764e215c4f7a9596527d
 ```
 
 Anyone can verify the principles have not been changed:
