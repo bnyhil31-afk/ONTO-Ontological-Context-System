@@ -1,7 +1,7 @@
-# ONTO — Test Requirements
-# Install these before running the test suite.
+# ONTO — Test Dependencies
+# Install before running the test suite.
 #
-# Run this command:
+# Command:
 #   pip install -r requirements-test.txt
 
 pytest>=7.0
