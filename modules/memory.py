@@ -290,6 +290,21 @@ def read_by_id(record_id: int) -> Optional[Dict[str, Any]]:
         return _row_to_dict(row) if row else None
 
 
+def read_by_type(event_type: str) -> List[Dict[str, Any]]:
+    """
+    Returns all records matching a given event type.
+    """
+    with _connect() as conn:
+        cursor = conn.execute("""
+            SELECT id, timestamp, event_type, input, context,
+                   output, confidence, human_decision, notes,
+                   chain_hash, signature_algorithm, classification
+            FROM events WHERE event_type = ?
+            ORDER BY id ASC
+        """, (event_type,))
+        return [_row_to_dict(row) for row in cursor.fetchall()]
+
+
 def print_readable(records: List[Dict[str, Any]]) -> None:
     """
     Prints records in a human-readable format.
