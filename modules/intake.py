@@ -57,13 +57,18 @@ _CRISIS_DIRECT = [
     r"\bend\s+my\s+life\b",
     r"\bsuicid\w*\b",
     r"\bwant\s+to\s+die\b",
+    r"\bdon'?t\s+want\s+to\s+live\b",
+    r"\bdon'?t\s+want\s+to\s+be\s+alive\b",
     r"\bbetter\s+off\s+dead\b",
     r"\bno\s+reason\s+to\s+live\b",
+    r"\bnot\s+worth\s+living\b",
     r"\bself.harm\b",
     r"\bcut\s+myself\b",
     r"\boverdose\b",
     r"\bjump\s+off\b",
     r"\bhang\s+myself\b",
+    r"\bwish\s+i\s+(was|were|could\s+be)\s+dead\b",
+    r"\bwish\s+i\s+(hadn'?t|never)\s+been\s+born\b",
 ]
 
 # Indirect patterns — U7 addition
@@ -390,7 +395,8 @@ def _sanitize(text: str) -> tuple:
 
 def _assess_complexity(text: str, word_count: int) -> str:
     """
-    Assesses input complexity based on sentence count.
+    Assesses input complexity based on sentence count, with word count
+    as a fallback for unpunctuated long inputs.
     Returns: empty | simple | moderate | complex
     """
     if not text or word_count == 0:
@@ -398,22 +404,27 @@ def _assess_complexity(text: str, word_count: int) -> str:
 
     # Count sentence-ending punctuation
     sentence_count = len(re.findall(r'[.!?]+', text))
-    # If no punctuation, treat whole text as one sentence
-    if sentence_count == 0:
-        sentence_count = 1
 
-    if sentence_count <= 1:
-        return "simple"
-    elif sentence_count <= 3:
-        return "moderate"
-    else:
+    if sentence_count >= 4:
         return "complex"
+    elif sentence_count >= 2:
+        return "moderate"
+    elif sentence_count == 1:
+        return "simple"
+    else:
+        # No punctuation — fall back to word count
+        if word_count > 100:
+            return "complex"
+        elif word_count > 20:
+            return "moderate"
+        else:
+            return "simple"
 
 
 def _classify_input_type(text: str) -> str:
     """
     Classifies the type of input.
-    Returns: question | statement | request | number | text | unknown
+    Returns: question | command | text | number | unknown
     """
     if not text or not text.strip():
         return "unknown"
@@ -438,13 +449,15 @@ def _classify_input_type(text: str) -> str:
     ):
         return "question"
 
-    # Request phrases
-    request_starters = (
+    # Command/action phrases
+    command_starters = (
         "please", "can you", "could you", "would you",
-        "help me", "tell me", "show me", "explain"
+        "help me", "tell me", "show me", "explain",
+        "find", "get", "make", "create", "delete", "update",
+        "run", "start", "stop", "open", "close"
     )
-    if any(lower.startswith(w) for w in request_starters):
-        return "request"
+    if any(lower.startswith(w) for w in command_starters):
+        return "command"
 
-    # Default
-    return "statement"
+    # Default — general text
+    return "text"
