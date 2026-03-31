@@ -246,6 +246,36 @@ class ONTOConfig:
         return os.environ.get("ONTO_AUTOMATION_BIAS_WARNING", default)
 
     # ─────────────────────────────────────────────────────────────────────────
+    # SESSION MANAGEMENT (item 2.09)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def SESSION_IDLE_TIMEOUT_SECONDS(self) -> int:
+        """
+        Seconds of inactivity before a session expires.
+        Default: 1800 (30 minutes).
+        Set ONTO_SESSION_IDLE_TIMEOUT to override.
+        """
+        value = os.environ.get("ONTO_SESSION_IDLE_TIMEOUT", "1800")
+        try:
+            return max(60, int(value))
+        except ValueError:
+            return 1800
+
+    @property
+    def SESSION_MAX_DURATION_SECONDS(self) -> int:
+        """
+        Maximum absolute session lifetime in seconds, regardless of activity.
+        Default: 28800 (8 hours).
+        Set ONTO_SESSION_MAX_DURATION to override.
+        """
+        value = os.environ.get("ONTO_SESSION_MAX_DURATION", "28800")
+        try:
+            return max(300, int(value))
+        except ValueError:
+            return 28800
+
+    # ─────────────────────────────────────────────────────────────────────────
     # SUMMARY
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -272,6 +302,8 @@ class ONTOConfig:
                 "Auth passphrase:      "
                 f"{'SET' if self.AUTH_PASSPHRASE_HASH else 'NOT SET (dev only)'}"
             ),
+            f"Session idle timeout: {self.SESSION_IDLE_TIMEOUT_SECONDS}s",
+            f"Session max duration: {self.SESSION_MAX_DURATION_SECONDS}s",
             "─" * 40,
         ]
         if not self.IS_PRODUCTION:
