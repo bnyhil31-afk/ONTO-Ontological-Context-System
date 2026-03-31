@@ -1,8 +1,20 @@
-# ONTO — Test Dependencies
-# Install before running the test suite.
+# ONTO — Dependencies
+# Install before running the system or tests.
 #
 # Command:
 #   pip install -r requirements-test.txt
 
+# Testing
 pytest>=7.0
 pytest-cov>=4.0
+
+# Encryption — AES-256-GCM (item 2.01)
+# First deliberate external dependency. Actively maintained.
+# pip-audit scans this on every CI run.
+cryptography>=41.0
+
+# Key derivation — Argon2id (OWASP 2025 recommendation)
+# Replaces PBKDF2. Memory-hard, GPU/ASIC resistant, post-quantum resistant.
+# See REVIEW_001 Finding C1 for rationale.
+# pip-audit scans this on every CI run.
+argon2-cffi>=21.3.0
