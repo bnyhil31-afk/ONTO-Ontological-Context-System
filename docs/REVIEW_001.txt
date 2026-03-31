@@ -1,0 +1,661 @@
+ONTO × CRE — COMPREHENSIVE REVIEW FINDINGS
+Document ID: REVIEW-001
+Version: 1.0
+Date: 2026-03-31
+Status: Active — action items pending
+Authors: Neo (bnyhil31-afk), Claude (Anthropic)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE
+
+This document is the result of a systematic research review across every
+major domain touched by the ONTO and CRE projects. It answers three
+questions for each domain:
+
+  1. Is what we built correct?
+  2. What needs to change?
+  3. What should we explore that we haven't yet?
+
+Findings are graded:
+  ✅ CONFIRMED — correct, current, no change needed
+  ⚠️  UPGRADE   — correct direction, specific improvement needed
+  🔴 CHANGE    — material gap, requires code or design change
+  💡 EXPLORE   — new opportunity not yet addressed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 1 — GRAPH AND DATABASE ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 1.1 ✅ CONFIRMED — SQLite is the right choice for Stage 1
+
+Research confirms: SQLite with graph schema (nodes + edges tables) is
+the established approach for edge computing and local applications.
+December 2025 research explicitly validates this: "for local applications,
+mobile apps, or edge computing where the dataset fits on disk, SQLite
+with graph structuring is incredibly potent."
+
+FalkorDBLite (November 2025) is a new embedded Python graph database
+worth watching for Stage 2, but SQLite is correct for Stage 1.
+
+FINDING 1.2 ⚠️  UPGRADE — SQLite performance optimization missing
+
+We have not configured SQLite's performance pragmas for graph operations.
+Graph traversals are "random access" heavy — jumping around the B-Tree.
+Required additions to memory.py initialization:
+
+  conn.execute("PRAGMA journal_mode=WAL")   # Write-Ahead Logging
+  conn.execute("PRAGMA page_size=4096")     # Optimal for graph traversal
+  conn.execute("PRAGMA cache_size=-32000")  # 32MB cache
+  conn.execute("PRAGMA synchronous=NORMAL") # Balance safety/speed
+
+Also required: indexes on the relationship graph edge table:
+  CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)
+  CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)
+  CREATE INDEX IF NOT EXISTS idx_edges_weight ON edges(weight DESC)
+
+Without these, graph traversal at any meaningful scale will be slow.
+
+FINDING 1.3 ⚠️  UPGRADE — Relationship graph not yet implemented in code
+
+We have designed the relationship graph thoroughly in the crossover
+contract and CRE spec. We have NOT yet implemented it in ONTO's modules.
+The current contextualize.py uses a simple word-overlap field, not a
+proper weighted edge graph. This is acceptable for Stage 0 (POC) but
+must be addressed in Stage 1 hardening.
+
+The graph schema should be:
+  nodes(id, entity_type, properties_json, created_at, classification)
+  edges(source_id, target_id, relationship_type, weight, provenance_sig,
+        created_at, last_decayed_at, decay_rate)
+
+FINDING 1.4 💡 EXPLORE — NetworkX for in-memory graph operations
+
+NetworkX is the standard Python graph library. For ONTO's graph
+operations (traversal, subgraph selection, weight computation), NetworkX
+provides all needed primitives and is well-tested. The pattern would be:
+load relevant subgraph from SQLite into NetworkX for processing, then
+write results back. This gives graph algorithms without a graph database.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 2 — CRYPTOGRAPHY AND KEY DERIVATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 2.1 ✅ CONFIRMED — AES-256-GCM is quantum-resistant
+
+Confirmed by NIST, NSA, and current consensus. Grover's algorithm
+reduces AES-256 to 2^128 effective security — still computationally
+infeasible for any foreseeable technology. No change needed.
+
+FINDING 2.2 🔴 CHANGE — PBKDF2 must be upgraded to Argon2id
+
+This is the most important finding in this review.
+
+OWASP 2025 Password Storage Cheat Sheet recommends Argon2id as the
+primary choice for all new systems without FIPS compliance requirements.
+Our core/encryption.py and core/auth.py both use PBKDF2-HMAC-SHA256.
+
+The problems with our PBKDF2 implementation:
+  - PBKDF2 is not memory-hard — vulnerable to GPU/ASIC parallel attacks
+  - Our iteration count (600,000) is correct per OWASP but still inferior
+    to Argon2id's memory-hardness for passphrase-based key derivation
+  - Argon2id provides inherent additional quantum resistance through
+    memory-hardness (each Grover oracle call requires significant memory)
+
+OWASP recommended Argon2id configuration:
+  m=46 MiB (47104 KB), t=1, p=1  — high security, lower iterations
+  m=19 MiB (19456 KB), t=2, p=1  — OWASP minimum (acceptable for Pi)
+
+For Raspberry Pi constraint: use m=19456, t=2, p=1 as minimum.
+Use m=46080, t=1, p=1 where memory allows.
+
+Implementation: pip install argon2-cffi
+  from argon2 import PasswordHasher
+  from argon2.low_level import hash_secret_raw, Type
+
+Files requiring change:
+  - core/encryption.py: _derive_key() method
+  - core/auth.py: _hash_passphrase() method
+  - requirements-test.txt: add argon2-cffi
+
+FINDING 2.3 ✅ CONFIRMED — Ed25519 correct for Stage 1
+
+For local single-node deployment where data doesn't leave the device,
+Ed25519 for signatures is correct. Harvest-now-decrypt-later threat is
+minimal when data never transits a network. Post-quantum migration
+(ML-DSA) is a Stage 2/3 concern as documented in threat model.
+
+FINDING 2.4 ⚠️  UPGRADE — Auth hash needs application-specific salt
+
+Current auth.py uses a deterministic application salt derived from
+password length. This should use a randomly generated, stored salt
+per-installation (like the encryption salt) for stronger brute-force
+resistance. The auth.json file should store both the passphrase hash
+AND the salt used to produce it.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 3 — DATA SOVEREIGNTY AND IDENTITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 3.1 ✅ CONFIRMED — Node identity design is aligned with SSI
+
+W3C VC 2.0 became a formal Recommendation in May 2025. W3C DIDs v1.0
+has been a Recommendation since 2022. Our node identity design — sealed
+principles + continuous audit trail — is architecturally aligned with
+DID principles: self-certifying, cryptographically verifiable, not
+dependent on any central authority.
+
+FINDING 3.2 💡 EXPLORE — Formally adopt did:key for node identity
+
+The did:key method creates a DID from a cryptographic public key with
+no external infrastructure required. This maps perfectly to ONTO's
+node identity model. A node's DID would be derived from its signing
+key, making identity cryptographically self-certifying.
+
+This is not required for Stage 1 but should be designed into the
+federation layer before Stage 2. If we adopt did:key now in the
+identity schema (even as a reserved field), migration to full DID
+support later requires no schema change.
+
+FINDING 3.3 💡 EXPLORE — W3C Verifiable Credentials for consent records
+
+The consent ledger stores grants as structured records. W3C Verifiable
+Credentials provide a standardized, cryptographically signed format for
+exactly this purpose. A consent grant as a VC would be:
+  - Cryptographically signed by the granting party
+  - Verifiable by any compliant system
+  - Revocable via Bitstring Status List (W3C Recommendation, May 2025)
+  - Interoperable with EU Digital Identity Wallet (required by Dec 2027)
+
+Not required for Stage 1. Design the consent record schema to be
+forward-compatible with VC format now — the fields are the same.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 4 — FEDERATED SYSTEMS AND P2P
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 4.1 ✅ CONFIRMED — CRDT approach is correct
+
+Research confirms CRDTs are the right choice for distributed state
+management in federated systems. Our CRDT assignments in CRE-SPEC-001
+§12 are sound. No change needed.
+
+FINDING 4.2 ✅ CONFIRMED — Staged deployment (single → intranet → federated → P2P)
+
+This matches both the technical maturity curve and the security threat
+landscape. Each stage adds specific threats (documented in THREAT_MODEL)
+and requires specific mitigations before proceeding. No change needed.
+
+FINDING 4.3 ⚠️  UPGRADE — ActivityPub/Fediverse lessons not yet incorporated
+
+Research on federated social networks reveals specific failure modes
+relevant to CRE federation:
+  - Instance-level moderation without user-level control creates
+    centralization within nominally federated systems
+  - Lack of content addressing makes context verification impossible
+    after the fact
+  - Discovery mechanisms become concentration vectors
+
+Specific lesson for CRE: the discovery protocol must not create a
+de facto central registry even if nominally distributed. Design
+discovery to be fully resolvable from any node, not just from a
+"well-known" bootstrap list.
+
+FINDING 4.4 💡 EXPLORE — Secure Scuttlebutt's offline-first lessons
+
+Secure Scuttlebutt (SSB) solved offline-first sync in a way that is
+directly relevant to ONTO's Raspberry Pi deployment. SSB nodes sync
+when they connect — no server required. The append-only log structure
+is identical to ONTO's audit trail concept. Worth studying SSB's
+gossip protocol design before designing CRE's federation layer.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 5 — AUDIT TRAIL AND RECORD INTEGRITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 5.1 ✅ CONFIRMED — Append-only with cryptographic chaining is correct
+
+This matches certificate transparency log design (RFC 6962) and
+Sigstore/Rekor's transparency log approach. The pattern is industry-
+validated. The append-only SQLite trigger we implemented is correct.
+
+FINDING 5.2 ⚠️  UPGRADE — Merkle tree not yet implemented
+
+We designed the Merkle chain in CRE-SPEC-001 §36. We have not
+implemented it in ONTO. Currently memory.py uses a simple sequential
+ID with no cryptographic chaining. The chain_hash field described in
+the crossover contract does not exist in the current schema.
+
+This gap means the audit trail currently has NO tamper evidence.
+Adding the chain is required before Stage 1 is complete.
+
+Required addition to the events table:
+  chain_hash TEXT  -- SHA-256 of previous record content
+
+And to every record() call:
+  chain_hash = compute_chain_hash(previous_record_id)
+
+FINDING 5.3 ⚠️  UPGRADE — Read logging not yet implemented
+
+We specified read logging in the crossover contract and CRE spec.
+memory.py currently only logs writes. Every read of a sensitive record
+should generate a READ_ACCESS event. This is a gap in the current
+implementation.
+
+FINDING 5.4 💡 EXPLORE — Sigstore/Rekor for module signing
+
+Sigstore is the current standard for software supply chain signing.
+It provides keyless signing using OIDC identity tokens and a
+transparency log (Rekor) that records all signing events. This is
+more mature than our manual GPG approach for module signing and
+would satisfy supply chain attack mitigations more robustly.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 6 — HUMAN-IN-THE-LOOP AND EU AI ACT COMPLIANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 6.1 ✅ CONFIRMED — GOVERN/checkpoint is aligned with EU AI Act Article 14
+
+EU AI Act Article 14 requires that high-risk AI systems be designed so
+humans can:
+  (a) understand capabilities and limitations
+  (b) remain aware of automation bias
+  (c) correctly interpret outputs
+  (d) decide not to use the system
+  (e) stop the system
+
+Our checkpoint design satisfies all five points. The Socratic principle
+(present examined candidates with visible reasoning, never conclusions)
+directly addresses (b) automation bias. The veto as first-class output
+addresses (d) and (e). No change needed to the core design.
+
+FINDING 6.2 ⚠️  UPGRADE — High-risk assessment not yet documented
+
+EU AI Act high-risk rules apply from August 2026. ONTO deployments
+in healthcare, legal, employment, education, or financial contexts
+would qualify as high-risk. We need a formal high-risk assessment
+process documented for deployers, including:
+  - Which deployment contexts trigger high-risk classification
+  - What conformity assessment is required
+  - What technical documentation must be maintained
+  - What logging retention applies (minimum 6 months per Article 26)
+
+Our audit trail already satisfies Article 12 (automatic event logging).
+We need to add this to the regulatory profile framework.
+
+FINDING 6.3 ⚠️  UPGRADE — Automation bias warning not in current checkpoint output
+
+Article 14(4)(b) specifically requires the system warn against
+over-reliance. Our checkpoint presents context but does not currently
+include an explicit automation bias warning. This is a small addition
+to the checkpoint output:
+
+  "REMINDER: This system provides examined context, not conclusions.
+   The decision is yours. Disagreeing with this output is always valid."
+
+FINDING 6.4 💡 EXPLORE — Cognitive load and decision fatigue research
+
+Research on human oversight systems shows that checkpoint fatigue —
+humans approving things without genuine consideration after repeated
+similar approvals — is a documented failure mode. For high-frequency
+checkpoints, consider:
+  - Varying the checkpoint presentation format to prevent habituation
+  - Random "verification" checkpoints that test if the human is
+    genuinely engaged
+  - Checkpoint frequency limits (automatic escalation if too many
+    checkpoints occur in a short period)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 7 — PRIVACY ENGINEERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 7.1 ✅ CONFIRMED — Cryptographic erasure design is correct
+
+Our two-layer record structure (shell + encrypted payload with key
+destruction for erasure) is the current GDPR-compliant approach.
+Confirmed by 2024-2025 privacy engineering standards. No change needed.
+
+FINDING 7.2 ✅ CONFIRMED — Data classification at intake is correct
+
+The pattern of classifying at intake and propagating the classification
+forward is aligned with ISO 31700 (Privacy by Design) and current
+GDPR implementation guidance. No change needed to the design.
+Implementation is pending (not yet in code).
+
+FINDING 7.3 🔴 CHANGE — Data classification not yet implemented in code
+
+We designed a 6-level classification system in the crossover contract.
+It does not exist in the current intake.py. The package produced by
+intake.receive() has no classification field. This must be added before
+any sensitive data is processed.
+
+Minimum addition to intake package:
+  "classification": 0,  # 0-5 per crossover contract §28
+  "classification_basis": "auto-detected | user-declared"
+
+FINDING 7.4 💡 EXPLORE — Differential privacy for aggregate outputs
+
+When ONTO aggregates context across many records (e.g., "what patterns
+exist in this dataset"), differential privacy techniques can add
+calibrated noise to prevent individual records from being inferred from
+aggregate outputs. The Python library `diffprivlib` (IBM) provides
+practical implementations. Relevant for Stage 2+ multi-user deployments.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 8 — ECOLOGICAL COMPUTING AND SUSTAINABILITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 8.1 ✅ CONFIRMED — Edge computing approach is eco-correct
+
+Research confirms that edge computing has substantially lower carbon
+footprint than cloud computing for equivalent workloads. The Raspberry
+Pi target is both an accessibility and environmental principle.
+No change needed.
+
+FINDING 8.2 💡 EXPLORE — SCI (Software Carbon Intensity) is now ISO standard
+
+The Green Software Foundation's Software Carbon Intensity specification
+is now ISO/IEC 21031:2024. This gives us a formally standardized,
+auditable metric for ONTO's environmental impact.
+
+The SCI formula: SCI = ((E × I) + M) per R
+  E = energy consumed (kWh)
+  I = location-based carbon intensity (gCO2eq/kWh)
+  M = embodied carbon (hardware manufacturing)
+  R = functional unit (per COMMIT, per query, etc.)
+
+Implementing SCI measurement for ONTO would:
+  - Make eco-conscious claims auditable and specific
+  - Enable comparison between deployments
+  - Satisfy emerging regulatory reporting requirements
+  - Fulfill the intergenerational commitment in the crossover contract
+
+A simple implementation: measure energy per COMMIT on target hardware,
+publish the SCI score in the capability manifest.
+
+FINDING 8.3 💡 EXPLORE — GSF's SCI for AI specification (2025)
+
+The Green Software Foundation published SCI for AI in early 2025,
+covering the full lifecycle including data preparation and inference.
+Since ONTO processes data contextually (analogous to inference),
+this specification may apply and provide a more relevant metric
+than the general SCI.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 9 — OPEN SOURCE GOVERNANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 9.1 ✅ CONFIRMED — Values-capture threat is real and well-documented
+
+Research across open source governance literature confirms this is a
+documented and recurring failure mode. Our identification of it in the
+SWOT and threat model is correct and important.
+
+FINDING 9.2 🔴 CHANGE — No formal governance document exists yet
+
+Research shows that projects without explicit governance documentation
+face systemic risks: stagnation, contributor burnout, and loss of trust.
+More critically, without a governance document, values-capture has no
+structural defense.
+
+We need a GOVERNANCE.md before any significant external adoption.
+Based on research, the cooperative/meritocratic hybrid model is most
+appropriate for ONTO at this stage, given:
+  - Single founder currently (founder-leader model is natural now)
+  - Values-bearing architecture requires protection from future capture
+  - Open participation is a stated value
+
+Recommended structure:
+  - Decision-making: founder-leader now, transitioning to elected
+    steering committee at defined adoption threshold
+  - Breaking changes: require public comment period
+  - Values changes: require supermajority + public comment
+  - Anti-capture: explicit language that removing values-bearing
+    components disqualifies a fork from using the ONTO/CRE names
+
+FINDING 9.3 💡 EXPLORE — Cooperative ownership model
+
+The Loomio Worker-Opened Cooperative and Enspiral Foundation models
+show that software projects can be governed as cooperatives. This is
+the most direct organizational expression of ONTO's values. Worth
+exploring as the project grows beyond solo development.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 10 — WELLBEING AND MENTAL HEALTH DETECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 10.1 ✅ CONFIRMED — Three-state model (pass/flag/escalate) is correct
+
+Research on digital mental health tools confirms that a tiered response
+model (no signal / signal detected / crisis) is the appropriate
+architecture. The WHO's digital mental health framework and current
+clinical literature support this approach. No change needed to design.
+
+FINDING 10.2 ⚠️  UPGRADE — Current CRISIS detection is keyword-based only
+
+Research shows that LLM-based crisis detection approaches clinical
+accuracy but still requires "additional safety measures." More
+importantly, keyword-based detection has high false-negative rates for
+indirect crisis expression (ellipsis, minimization, denial).
+
+Current intake.py CRISIS patterns should be expanded to detect:
+  - Indirect expressions ("I'm tired of everything", "no point anymore")
+  - Future temporal markers ("when I'm gone", "after I'm dead")
+  - Goodbye patterns ("wanted to say thanks for everything")
+  - Hopelessness language (distinct from sadness)
+
+The current system is a good start but should be documented as
+"indicative, not comprehensive" — epistemic honesty about limitations.
+
+FINDING 10.3 ✅ CONFIRMED — Local wellbeing check (not remote) is correct
+
+Research confirms: "The wellbeing check must run locally, not via a
+remote model call, to ensure it cannot be bypassed by network failure
+or cost-optimisation routing." Our design mandates this. Correct.
+
+FINDING 10.4 🔴 CHANGE — No safe messaging guidelines implemented
+
+Safe messaging guidelines (from AFSP, SAMHSA, and WHO) provide specific
+language recommendations for crisis responses. Currently, the system
+flags CRISIS but the response language is not specified. We need
+to define the specific crisis response text that the system presents
+when it detects crisis signals.
+
+The response must:
+  - Acknowledge what the person said without dismissing it
+  - NOT ask clarifying questions that pull the person deeper
+  - Provide crisis resources immediately
+  - NOT lecture or moralize
+  - Be brief and warm
+
+This should be implemented as configurable text in config.py so
+different deployments can localize it, with a safe default.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 11 — ARCHITECTURE AND CROSSOVER CONTRACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 11.1 ✅ CONFIRMED — Four-function framework is architecturally sound
+
+RELATE, NAVIGATE, GOVERN, REMEMBER maps directly to both the brain
+analogy and current practice in contextual AI systems. The crossover
+contract is well-designed. No structural changes needed.
+
+FINDING 11.2 ✅ CONFIRMED — Three axes (distance, complexity, size) are correct
+
+This is an independent derivation of concepts used in information
+retrieval, knowledge graphs, and cognitive science. Distance maps to
+temporal/semantic relevance decay. Complexity maps to betweenness
+centrality in graph theory. Size maps to node degree. The axes are
+scientifically grounded. No change needed.
+
+FINDING 11.3 🔴 CHANGE — Relationship graph exists in spec but not in code
+
+The most significant gap between design and implementation. The current
+ONTO code implements a "living field" (list of past entries) rather
+than a weighted relationship graph. The contextualize module computes
+simple word overlap, not graph-theoretic relationships.
+
+This is not a flaw in the POC — it was appropriate for proving the
+five-step loop. But it is the central architectural commitment that
+needs to be implemented in Stage 1.
+
+Priority sequence for graph implementation:
+  1. Add nodes/edges tables to SQLite schema
+  2. RELATE: write edges to graph when input is received
+  3. NAVIGATE: traverse graph to find related context
+  4. REMEMBER: record graph state changes in audit trail
+  5. Decay: implement weight decay function on edges
+
+FINDING 11.4 ✅ CONFIRMED — Self-preservation and autopoiesis framing is correct
+
+Research in complex systems, biology, and organizational theory
+confirms autopoiesis as the right conceptual frame for persistent
+system identity. The "pattern not components" principle is
+scientifically grounded in Maturana and Varela's work. No change.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOMAIN 12 — POST-QUANTUM CRYPTOGRAPHY
+(Summarized from detailed PQC research report)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINDING 12.1 ✅ CONFIRMED — AES-256-GCM is quantum-resistant. No change.
+
+FINDING 12.2 🔴 CHANGE — PBKDF2 → Argon2id (see Domain 2, Finding 2.2)
+
+FINDING 12.3 ✅ CONFIRMED — Ed25519 correct for Stage 1. ML-DSA for Stage 2+.
+
+FINDING 12.4 ✅ CONFIRMED — Phased hybrid approach is correct strategy.
+
+FINDING 12.5 ⚠️  UPGRADE — Signature algorithm field must be in COMMIT schema
+
+The audit trail COMMIT record must store the algorithm used for signing
+from day one — not just the signature. This enables future migration
+from Ed25519 to ML-DSA without schema changes. Add:
+  "signature_algorithm": "Ed25519"
+to every COMMIT record shell.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUMMARY — PRIORITIZED ACTION LIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔴 CRITICAL CHANGES (address before Stage 1 is complete)
+
+  C1. Argon2id — replace PBKDF2 in core/encryption.py and core/auth.py
+      Impact: Security. Files: core/encryption.py, core/auth.py,
+      requirements-test.txt
+      Checklist: New item — 2.01 enhancement
+
+  C2. Merkle chain — add chain_hash to audit trail in memory.py
+      Impact: Integrity. Files: modules/memory.py
+      Checklist: New item — 1.13
+
+  C3. Data classification at intake — add classification field to intake
+      Impact: Privacy, compliance. Files: modules/intake.py
+      Checklist: New item — 5.07
+
+  C4. Safe messaging response text — define crisis response language
+      Impact: User safety. Files: core/config.py
+      Checklist: New item — 5.08
+
+  C5. GOVERNANCE.md — formal governance document
+      Impact: Values protection, community. Files: GOVERNANCE.md (new)
+      Checklist: New item — 3.13
+
+⚠️  UPGRADES (address in current development sprint)
+
+  U1. SQLite performance pragmas — WAL mode, page size, cache, indexes
+      Files: modules/memory.py
+
+  U2. Auth salt — use randomly generated per-installation salt
+      Files: core/auth.py
+
+  U3. Read logging — add READ_ACCESS events to memory.py
+      Files: modules/memory.py
+
+  U4. Automation bias warning — add to checkpoint output
+      Files: modules/checkpoint.py
+
+  U5. EU AI Act high-risk assessment — add to regulatory profile docs
+      Files: docs/ROADMAP_001.txt update
+
+  U6. Signature algorithm field — add to COMMIT record schema
+      Files: modules/memory.py
+
+  U7. CRISIS detection — expand patterns beyond keyword matching
+      Files: modules/intake.py
+
+💡 EXPLORATIONS (design and research, no immediate code required)
+
+  E1. NetworkX for in-memory graph operations (Stage 1 graph impl)
+  E2. did:key for node identity (design into Stage 2 schema now)
+  E3. W3C VC 2.0 for consent records (forward-compatible schema design)
+  E4. SCI measurement (ISO/IEC 21031:2024) for eco reporting
+  E5. Differential privacy for aggregate outputs (Stage 2+)
+  E6. Cooperative ownership model (governance evolution path)
+  E7. Sigstore/Rekor for module signing (Stage 2 supply chain)
+  E8. Secure Scuttlebutt gossip protocol study (before Stage 2 federation)
+  E9. Cognitive load / checkpoint fatigue mitigations (UX research)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHAT IS WORKING WELL — CONFIRMED CORRECT
+
+The foundational decisions are all holding up under research scrutiny:
+
+  ✅ SQLite for edge deployment
+  ✅ AES-256-GCM for symmetric encryption
+  ✅ Append-only audit trail with trigger enforcement
+  ✅ Three-state wellbeing model (pass/flag/escalate)
+  ✅ Four-function framework (RELATE/NAVIGATE/GOVERN/REMEMBER)
+  ✅ Three axes (distance/complexity/size)
+  ✅ Self-preservation and autopoiesis framing
+  ✅ Human sovereignty as architectural property
+  ✅ Staged deployment (single → intranet → federated → P2P)
+  ✅ CRDTs for distributed state management
+  ✅ Cryptographic erasure for right to erasure compliance
+  ✅ Ed25519 for Stage 1 signatures
+  ✅ Phased hybrid PQC approach
+  ✅ Local wellbeing check (not remote)
+  ✅ Rate limiting with sliding window
+  ✅ Capability manifest for module swappability
+  ✅ Values-capture concern is real and must be addressed structurally
+  ✅ Edge computing as eco-conscious design
+
+OVERALL ASSESSMENT
+
+The architecture is sound. The philosophical foundations are correct.
+The main gaps are:
+
+  1. Implementation lag — the graph is designed but not built
+  2. One specific cryptographic upgrade — PBKDF2 to Argon2id
+  3. Audit trail integrity — Merkle chain not yet in code
+  4. Governance — formal document needed before adoption
+
+None of these are architectural mistakes. They are implementation
+gaps that a systematic development sprint can address.
+
+The project is in excellent shape at the POC stage. The path to
+Stage 1 completion is clear, specific, and manageable.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This document is part of the permanent record of ONTO.
+Updated as findings are acted upon.
+Honest about what needs to change.
+That is the only way trust is built.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
