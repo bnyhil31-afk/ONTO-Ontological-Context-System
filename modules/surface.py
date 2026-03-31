@@ -185,15 +185,16 @@ def _build_simple_display(
     else:
         lines.append(f"Connected to {related_count} prior observation(s).")
 
-    # Confidence — honest, brief
-    if level == "none" or related_count == 0:
-        lines.append("Confidence: none — new territory.")
-    elif level == "low":
-        lines.append("Confidence: low.")
-    elif level == "moderate":
-        lines.append("Confidence: moderate.")
+    # Confidence — honest, calibrated language
+    confidence_val = _compute_confidence(enriched_package, examination)
+    if confidence_val >= 0.7:
+        lines.append(f"Confident — strong match with prior context.")
+    elif confidence_val >= 0.4:
+        lines.append(f"Moderate confidence.")
+    elif confidence_val >= 0.1:
+        lines.append("Low confidence — limited prior context. Human judgment recommended.")
     else:
-        lines.append("Confidence: established.")
+        lines.append("Confidence: none — new territory.")
 
     # Contradiction flag — always shown if present
     flags = examination.get("contradiction_flags", [])
@@ -417,30 +418,31 @@ def _compute_confidence(
 ) -> float:
     """
     Compute a numeric confidence value (0.0 to 1.0).
-    Used for backward compat with tests that check confidence as a float.
 
-    This is derived from the confidence profile, not a raw calculation.
-    The level labels are the authoritative output; this number is secondary.
+    When no graph data is available: confidence = 1 - distance (original behavior).
+    When graph data exists: modulate by source diversity and confidence level.
     """
     context = enriched.get("context") or {}
     distance = context.get("distance", enriched.get("distance", 1.0))
+    base = max(0.0, min(1.0, 1.0 - distance))
 
-    # Base confidence from distance (closer = more familiar = higher confidence)
-    base = max(0.0, 1.0 - distance)
+    # Only apply level adjustment when we actually have graph-backed context
+    navigate_results = enriched.get("graph_context") or []
+    if not navigate_results:
+        return round(base, 3)
 
-    # Adjust from confidence profile level
+    # Graph data exists — modulate by confidence profile
     level_adjustments = {
-        "high": 0.2,
-        "moderate": 0.1,
-        "low": -0.1,
-        "none": -0.2,
+        "high":     0.15,
+        "moderate": 0.05,
+        "low":     -0.05,
+        "none":    -0.10,
     }
     confidence_profile = examination.get("confidence_profile") or {}
     level = confidence_profile.get("level", "none")
     adjustment = level_adjustments.get(level, 0.0)
 
-    confidence = max(0.0, min(1.0, base + adjustment))
-    return round(confidence, 3)
+    return round(max(0.0, min(1.0, base + adjustment)), 3)
 
 
 # ---------------------------------------------------------------------------
