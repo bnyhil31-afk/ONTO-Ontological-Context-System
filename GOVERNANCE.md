@@ -53,7 +53,7 @@ a project with a single primary contributor. Lines of authority are clear.
 - No breaking changes are made without documentation in CHANGELOG.md
 - The founder is bound by the principles before anyone else
 
-**When this changes:**
+**When this changes:**  
 When ONTO has two or more active external contributors making regular
 contributions, the project transitions to the Self-Appointing Council
 model described below. This transition is not optional — it is a
@@ -65,7 +65,7 @@ commitment made in this document.
 
 At the defined threshold, a Steering Committee is established:
 
-**Composition:** 3-7 members, including:
+**Composition:** 3–7 members, including:
 - The founder (permanent seat until voluntarily relinquished)
 - Active contributors elected by contribution history
 - At minimum one seat reserved for a non-technical stakeholder
