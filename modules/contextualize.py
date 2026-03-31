@@ -212,7 +212,7 @@ def _word_overlap_fallback(text: str) -> List[Dict[str, Any]]:
         entry_text = entry.get("text", "")
         entry_words = set(entry_text.lower().split())
         overlap = words & entry_words
-        if len(overlap) >= 2:
+        if len(overlap) >= 1:
             results.append({
                 "concept": entry_text[:60],
                 "effective_weight": len(overlap) / max(len(words), 1),
