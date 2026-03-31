@@ -186,7 +186,7 @@ def _build_simple_display(
         lines.append(f"Connected to {related_count} prior observation(s).")
 
     # Confidence — honest, calibrated language
-    confidence_val = _compute_confidence(enriched_package, examination)
+    confidence_val = _compute_confidence(enriched, examination)
     if confidence_val >= 0.7:
         lines.append(f"Confident — strong match with prior context.")
     elif confidence_val >= 0.4:
