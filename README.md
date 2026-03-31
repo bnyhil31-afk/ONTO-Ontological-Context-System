@@ -93,7 +93,11 @@ bash setup.sh
 ```
 
 **On Windows:**
-Use WSL (Windows Subsystem for Linux) and follow the Linux instructions.
+See `docs/Setup_Windows.md` for full instructions (WSL or native Python).
+
+**On Raspberry Pi (detailed):**
+See `docs/Setup_RaspberryPi.md` for hardware-specific guidance and
+physical security recommendations.
 
 ---
 
@@ -119,14 +123,44 @@ ONTO-Ontological-Context-System/
 │
 ├── core/
 │   ├── verify.py           Guards the principles. Runs on every boot.
-│   └── principles.hash     The sealed fingerprint of the principles.
+│   ├── principles.hash     The sealed fingerprint of the principles.
+│   ├── config.py           All configuration. Loads from environment.
+│   ├── auth.py             Passphrase authentication. Swappable.
+│   ├── encryption.py       AES-256-GCM database encryption.
+│   ├── ratelimit.py        Sliding window rate limiter.
+│   └── session.py          Session management and token lifecycle.
 │
 ├── modules/
-│   ├── intake.py           Receives any input. Checks for safety.
+│   ├── intake.py           Receives any input. Classifies. Checks safety.
 │   ├── contextualize.py    Builds understanding. Finds connections.
 │   ├── surface.py          Presents findings in plain language.
 │   ├── checkpoint.py       Asks the human. Records the decision.
-│   └── memory.py           Permanent, append-only audit trail.
+│   └── memory.py           Permanent, append-only, Merkle-chained audit trail.
+│
+├── tests/
+│   ├── test_onto.py        Core system tests (108 tests)
+│   ├── test_conformance.py Crossover contract conformance (16 tests)
+│   ├── test_security.py    Security hardening tests (28 tests)
+│   ├── test_memory_chain.py Merkle chain and audit integrity (19 tests)
+│   ├── test_classification_and_config.py Classification and safe messaging (16 tests)
+│   └── test_session.py     Session management tests (17 tests)
+│
+├── docs/
+│   ├── API.md              Full API reference for all modules
+│   ├── FAQ.md              Frequently asked questions
+│   ├── Setup_Windows.md    Windows installation guide
+│   ├── Setup_RaspberryPi.md Raspberry Pi installation and security guide
+│   ├── PRIVACY_POLICY.md   Privacy policy
+│   ├── TERMS_OF_USE.md     Terms of use
+│   ├── PRIVACY_GDPR.md     GDPR architecture and right to erasure
+│   ├── PRIVACY_CCPA.md     CCPA compliance review
+│   ├── DATA_RETENTION.md   Data retention policy
+│   ├── CONSENT_MANAGEMENT.md Consent management framework
+│   ├── CROSSOVER_CONTRACT_v1.0.md Shared contract with CRE protocol
+│   ├── CRE-SPEC-001-v06.md CRE protocol specification v0.6
+│   ├── ROADMAP_001.txt     POC to enterprise deployment roadmap
+│   ├── THREAT_MODEL_001.txt 28 threats across 9 categories
+│   └── REVIEW_001.txt      Architecture review across 12 domains
 │
 └── data/
     └── memory.db           The permanent record. Never deleted.
@@ -172,6 +206,20 @@ Or open it with any SQLite viewer. It is a standard, open format.
 
 ---
 
+## How to verify the audit trail is intact
+
+The audit trail is cryptographically chained. Every record links to
+the one before it. Tampering is detectable.
+
+```python
+from modules import memory
+memory.initialize()
+result = memory.verify_chain()
+print(result["intact"])  # True if unbroken
+```
+
+---
+
 ## The three governing forces
 
 Every input is weighed by:
@@ -191,6 +239,31 @@ If the system detects that someone may be in danger, it stops
 everything and provides crisis resources before anything else.
 
 This cannot be turned off.
+
+---
+
+## Tests
+
+188 tests. All passing. Across Python 3.8–3.12.
+
+```bash
+pytest tests/ -v
+```
+
+See `tests/README.md` for the full guide.
+
+---
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| `docs/API.md` | Full API reference |
+| `docs/FAQ.md` | Common questions answered |
+| `docs/Setup_Windows.md` | Windows installation |
+| `docs/Setup_RaspberryPi.md` | Raspberry Pi installation |
+| `GOVERNANCE.md` | How the project is governed |
+| `CONTRIBUTING.md` | How to contribute |
 
 ---
 
