@@ -37,8 +37,8 @@ from typing import Any, Dict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import examine as examine_module
-from modules import memory
+from core import examine as examine_module  # noqa: E402
+from modules import memory  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
