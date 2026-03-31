@@ -1,0 +1,465 @@
+ONTO — THREAT MODEL
+Document ID: THREAT-MODEL-001
+Version: 1.0
+Status: Active — updated as new threats are identified or mitigated
+Authors: Neo (bnyhil31-afk), Claude (Anthropic)
+Related: docs/CROSSOVER_CONTRACT_v1.0.md, docs/CRE-SPEC-001-v06.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE
+
+This document is the permanent record of every known threat to ONTO's
+security, integrity, and values. It exists so that:
+
+  - Every vulnerability is named honestly before it is exploited
+  - Every mitigation decision is traceable and auditable
+  - Security reviewers, penetration testers, and legal counsel
+    have a complete starting point
+  - Future contributors understand what has been considered
+
+This document grows over time. It is never deleted from. New threats
+are added at the top of each category. Mitigated threats remain in
+the record with their mitigation noted.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW TO READ THIS DOCUMENT
+
+Each threat entry contains:
+
+  THREAT:      What the attacker does
+  METHOD:      How they do it
+  IMPACT:      What happens if it succeeds
+  LIKELIHOOD:  Low / Medium / High (given current mitigations)
+  SEVERITY:    Low / Medium / High / Critical
+  STATUS:      Open / Mitigated / Accepted / Deferred
+  MITIGATION:  What is or will be done about it
+  OWNER:       Who is responsible for the mitigation
+  CHECKLIST:   Which checklist item closes this threat
+
+Priority = Severity × Likelihood. Address Critical+High first.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 1 — AUDIT TRAIL ATTACKS
+The trail is ONTO's immune memory. Compromising it destroys trust.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-001  Genesis Block Poisoning
+THREAT:    Attacker replaces the first audit trail record
+METHOD:    Direct database modification before or during first use.
+           The chain remains internally consistent from the fraudulent
+           starting point — standard chain verification still passes.
+IMPACT:    The entire audit history is built on a fraudulent foundation.
+           All subsequent records appear legitimate but are not.
+LIKELIHOOD: Medium (requires database access)
+SEVERITY:  Critical
+STATUS:    Open
+MITIGATION: Publish the genesis block hash to the public Gist
+            immediately after first COMMIT record is created.
+            Anyone can then verify the chain started legitimately.
+            This is the same mechanism used for the principles hash.
+OWNER:     Neo
+CHECKLIST: 2.01 (database hardening) + manual step at first deployment
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-002  Log Injection
+THREAT:    Attacker injects malicious content into audit records
+METHOD:    Crafts input designed to corrupt audit trail readability
+           or create false-looking entries when the trail is read.
+IMPACT:    Audit trail becomes unreliable or misleading.
+           Post-incident forensics are compromised.
+LIKELIHOOD: Medium
+SEVERITY:  High
+STATUS:    Mitigated
+MITIGATION: Input sanitization layer (item 1.07) handles upstream.
+            COMMIT writer enforces field type constraints independently —
+            it does not trust that upstream sanitization always ran.
+OWNER:     Neo
+CHECKLIST: 1.07 ✅ + 2.01 (writer-level enforcement)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-003  Timing Attack on Record Creation
+THREAT:    Attacker infers system state from record creation timing
+METHOD:    Monitors external system behavior to determine what is
+           being processed internally without reading records directly.
+IMPACT:    Privacy breach — internal operations are visible to
+           observers without authorization.
+LIKELIHOOD: Low (requires network/process monitoring access)
+SEVERITY:  Medium
+STATUS:    Deferred (Stage 2)
+MITIGATION: Timestamp normalization — normalize COMMIT timing so
+            processing patterns are not externally observable.
+OWNER:     Neo
+CHECKLIST: 2.09 (session hardening)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-004  Database File Size Oracle
+THREAT:    Attacker infers usage patterns from database file size
+METHOD:    Monitors file size over time with filesystem access but
+           not database access. Growth rate reveals processing volume
+           and timing.
+IMPACT:    Privacy breach — usage patterns exposed without
+           authorization.
+LIKELIHOOD: Low
+SEVERITY:  Medium
+STATUS:    Open
+MITIGATION: Encryption layer pads database to consistent size
+            increments rather than growing proportionally to content.
+OWNER:     Neo
+CHECKLIST: 2.01 (database encryption implementation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 2 — PRINCIPLES AND IDENTITY ATTACKS
+The principles are the invariant core. Subverting them subverts everything.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-005  Coordinated Principles Replacement
+THREAT:    Attacker replaces principles.txt and principles.hash together
+METHOD:    Gains repository write access. Replaces both files with
+           a new pair that verifies correctly against each other.
+           The system boots normally with modified principles.
+IMPACT:    System operates under attacker-controlled values while
+           appearing legitimate to users.
+LIKELIHOOD: Low (requires GitHub account compromise)
+SEVERITY:  Critical
+STATUS:    Partially mitigated
+MITIGATION: Public Gist records original hash independently.
+            Branch protection requires PR review before any push to main.
+            Two-factor authentication enforced on GitHub account.
+            Users can always verify against the Gist independently.
+OWNER:     Neo
+CHECKLIST: Manual — enable branch protection immediately
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-006  Fork and Impersonate
+THREAT:    Attacker forks repo, modifies principles, publishes as official
+METHOD:    Creates convincing lookalike repository with modified values.
+           Users who find the fork believe it is the real system.
+IMPACT:    Users operate under a system with different values than
+           they believe. Trust in the real ONTO is undermined.
+LIKELIHOOD: Medium (trivially easy to do technically)
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: Canonical repository URL published in multiple independent
+            locations. Release signing with GPG key.
+            Clear verification instructions in README.
+            Community trust through transparent history.
+OWNER:     Neo
+CHECKLIST: 3.01 (documentation) + future release signing process
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-007  Values Capture via Protocol Fork
+THREAT:    A well-resourced actor forks CRE, removes values-bearing
+           components, and achieves greater adoption than the original
+METHOD:    Technical compatibility + superior marketing + removal of
+           sovereignty checkpoint, consent ledger, bias monitor.
+           Users get the technical protocol without the values.
+IMPACT:    The protocol succeeds but the values fail. The most
+           important outcomes of the project are lost at scale.
+LIKELIHOOD: Medium (historically common with open protocols)
+SEVERITY:  Critical
+STATUS:    Open — governance response required
+MITIGATION: Strong community governance before significant adoption.
+            Clear "CRE-compliant" certification that requires
+            values-bearing components.
+            Legal framework for trademark protection of "CRE-compliant."
+OWNER:     Neo + legal counsel
+CHECKLIST: 4.01 (legal counsel) + governance framework
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 3 — RELATIONSHIP GRAPH ATTACKS
+Novel attack surface specific to ONTO's architecture.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-008  Slow Graph Poisoning
+THREAT:    Attacker gradually shifts the graph's understanding of
+           what is relevant over time
+METHOD:    Submits many carefully crafted inputs that individually
+           look legitimate but cumulatively shift edge weights to
+           elevate certain context and suppress other context.
+           Each input stays below detection threshold.
+IMPACT:    System consistently surfaces attacker-preferred context.
+           Bias is invisible to per-input monitoring.
+LIKELIHOOD: Medium (requires sustained access and sophistication)
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: Bias monitor needs longitudinal component — tracks
+            edge creation patterns over time, not just per-session.
+            Source distribution weighting — many edges from one
+            source are discounted relative to diverse sources.
+OWNER:     Neo
+CHECKLIST: 2.10 (intrusion detection) + bias monitor enhancement
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-009  Context Flooding
+THREAT:    Attacker floods the graph with high-volume inputs on a
+           specific topic to dominate NAVIGATE output
+METHOD:    Submits just below rate limit continuously on chosen topic.
+           Over time that topic's edges dominate the graph by volume.
+IMPACT:    Legitimate users receive attacker-influenced context
+           when querying related topics.
+LIKELIHOOD: Medium
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: Rate limiting (2.05 ✅) partially mitigates.
+            Weight decay must account for source distribution.
+            Maximum edge weight per source regardless of volume.
+OWNER:     Neo
+CHECKLIST: 2.05 ✅ + bias monitor enhancement
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-010  Adversarial SOMA Manipulation
+THREAT:    Attacker crafts inputs that produce specific unwanted
+           SOMA integration states
+METHOD:    Inputs designed to create maximum signal conflict in SOMA,
+           pushing integration toward attacker-desired outcomes.
+           Analogous to adversarial examples in machine learning.
+IMPACT:    SOMA consistently produces misleading integrated context
+           for specific query patterns.
+LIKELIHOOD: Low (requires deep system knowledge)
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: SOMA anomaly detection — flags when signal conflict
+            is unusually high relative to historical baseline.
+OWNER:     Neo
+CHECKLIST: Future SOMA hardening pass
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 4 — AUTHENTICATION AND SESSION ATTACKS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-011  Passphrase Storage Vulnerability
+THREAT:    Passphrase is stored somewhere it can be recovered
+METHOD:    Shell history, log files, environment variable dumps,
+           or application code stores the passphrase in plaintext.
+IMPACT:    Complete system compromise — attacker gains full access
+           and can decrypt all data.
+LIKELIHOOD: High if not explicitly designed against
+SEVERITY:  Critical
+STATUS:    Open — being addressed in 2.02
+MITIGATION: Passphrase derives the encryption key at runtime only.
+            It is never written anywhere. It exists only in memory
+            during the session and is cleared after key derivation.
+            Key derivation uses PBKDF2 with high iteration count.
+OWNER:     Neo
+CHECKLIST: 2.02 (authentication implementation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-012  Fake Boot Screen Attack
+THREAT:    Attacker installs a fake ONTO boot screen that captures
+           the passphrase before the real system starts
+METHOD:    Replaces main.py or adds a pre-boot script that mimics
+           the ONTO boot sequence and captures input.
+IMPACT:    Passphrase captured. Attacker gains full access.
+LIKELIHOOD: Low (requires physical or filesystem access)
+SEVERITY:  Critical
+STATUS:    Open
+MITIGATION: User-defined verification phrase displayed at boot —
+            a personal phrase the user set themselves that the
+            fake cannot know. User verifies it before entering
+            their passphrase.
+OWNER:     Neo
+CHECKLIST: 2.02 (authentication implementation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-013  Session Token Portability
+THREAT:    Attacker steals a session token and replays it from
+           a different connection
+METHOD:    Intercepts token from network traffic or process memory.
+           Uses it from attacker-controlled system.
+IMPACT:    Attacker impersonates legitimate session. All actions
+           are attributed to the legitimate user.
+LIKELIHOOD: Medium (once network functionality is added)
+SEVERITY:  High
+STATUS:    Open — being addressed in 2.09
+MITIGATION: Session tokens are connection-bound, not portable.
+            Short-lived with rotation on each use.
+            Token is cryptographically tied to connection parameters.
+OWNER:     Neo
+CHECKLIST: 2.09 (session management)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-014  Brute Force Passphrase Attack
+THREAT:    Attacker attempts many passphrases until one succeeds
+METHOD:    Automated passphrase guessing against the auth module.
+IMPACT:    System access with full privileges.
+LIKELIHOOD: Medium (if no rate limiting on auth attempts)
+SEVERITY:  Critical
+STATUS:    Open
+MITIGATION: Progressive delay on failed attempts (exponential backoff).
+            Maximum attempt count before lockout.
+            Every failed attempt recorded in audit trail.
+            Lockout event triggers alert.
+OWNER:     Neo
+CHECKLIST: 2.02 (authentication implementation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 5 — PHYSICAL ATTACKS
+Relevant because ONTO is designed for edge deployment on modest hardware.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-015  Evil Maid Attack
+THREAT:    Attacker with brief physical access replaces the device
+           or storage medium with a modified version
+METHOD:    Swaps SD card on Pi with one containing backdoored software.
+           The system appears to start normally.
+IMPACT:    Complete system compromise. All data and operations
+           are visible to attacker.
+LIKELIHOOD: Low (requires physical access)
+SEVERITY:  Critical
+STATUS:    Open
+MITIGATION: Full disk encryption on the Pi (Raspberry Pi OS supports).
+            Documented in deployment guide as required for production.
+            Physical security requirements documented.
+OWNER:     Neo
+CHECKLIST: 3.03 (Pi deployment documentation) + 2.01
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-016  Cold Boot Key Recovery
+THREAT:    Attacker power-cycles device rapidly and dumps memory
+           to recover encryption key
+METHOD:    After session starts and key is in memory, attacker
+           forces rapid restart and reads residual memory contents.
+IMPACT:    Encryption key recovered. All data decrypted.
+LIKELIHOOD: Low (requires physical access + specialized tools)
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: Key exists in memory only during active session.
+            Key is cleared explicitly when session ends.
+            Key is never written to swap or temp files.
+OWNER:     Neo
+CHECKLIST: 2.01 (encryption implementation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-017  USB/Port Exfiltration
+THREAT:    Malicious USB device captures keystrokes or exfiltrates data
+METHOD:    Hardware keylogger captures passphrase.
+           Malicious USB storage device copies database.
+IMPACT:    Passphrase capture or direct data theft.
+LIKELIHOOD: Low (requires physical access)
+SEVERITY:  High
+STATUS:    Open
+MITIGATION: Production deployment guide documents disabling unused
+            ports. Dedicated user account with restricted permissions.
+OWNER:     Neo
+CHECKLIST: 3.03 (deployment documentation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 6 — NETWORK ATTACKS (Stage 2+ — CRE Federation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-018  Man-in-the-Middle Between Nodes
+THREAT:    Attacker intercepts and modifies inter-node communication
+METHOD:    Network position between two nodes. Plain TLS allows
+           interception if certificate is compromised.
+IMPACT:    Context poisoned in transit. Data exfiltrated.
+           False nodes impersonate legitimate ones.
+LIKELIHOOD: Medium (once federation begins)
+SEVERITY:  Critical
+STATUS:    Deferred (Stage 2)
+MITIGATION: mTLS from first federation connection — mutual
+            certificate verification, not just server verification.
+            Certificate pinning — nodes verify cryptographic identity
+            of peers, not just address.
+OWNER:     Neo
+CHECKLIST: CRE federation implementation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-019  DNS Poisoning
+THREAT:    Attacker redirects node-to-node traffic via DNS manipulation
+METHOD:    Compromises DNS resolution so node addresses resolve to
+           attacker-controlled systems.
+IMPACT:    Nodes connect to malicious peers believing them legitimate.
+           Context is poisoned. Data is exfiltrated.
+LIKELIHOOD: Low
+SEVERITY:  High
+STATUS:    Deferred (Stage 2)
+MITIGATION: Certificate pinning. Nodes verify cryptographic identity,
+            not just resolved address.
+OWNER:     Neo
+CHECKLIST: CRE federation implementation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-020  Amplification Attack
+THREAT:    Malicious node sends small requests causing large work
+METHOD:    Crafts requests that trigger expensive graph operations
+           on legitimate nodes, exhausting their resources.
+IMPACT:    Denial of service. Legitimate nodes become unavailable.
+LIKELIHOOD: Medium (once federation begins)
+SEVERITY:  High
+STATUS:    Deferred (Stage 2)
+MITIGATION: Request cost limits. Expensive operations require
+            trusted relationship or proof of stake.
+OWNER:     Neo
+CHECKLIST: CRE federation implementation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CATEGORY 7 — SUPPLY CHAIN ATTACKS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-021  Dependency Confusion
+THREAT:    Attacker publishes malicious packages with similar names
+METHOD:    If ONTO publishes to PyPI, attacker publishes
+           onto-ontological-context or similar. Users install wrong one.
+IMPACT:    Malicious code runs with full system access.
+LIKELIHOOD: Low (ONTO not yet on PyPI)
+SEVERITY:  Critical
+STATUS:    Open
+MITIGATION: Pin exact dependency versions with hash verification.
+            When publishing, register all similar package names
+            proactively to prevent squatting.
+OWNER:     Neo
+CHECKLIST: 2.07 ✅ (pip-audit) + release process documentation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-022  Compromised cryptography Library
+THREAT:    The cryptography library — ONTO's first external dependency
+           — is compromised upstream
+METHOD:    Attacker compromises the library's build pipeline or
+           PyPI account. Malicious version is distributed normally.
+IMPACT:    Encryption is weakened or keys are exfiltrated.
+           Entire security layer is compromised.
+LIKELIHOOD: Low (well-maintained library with strong governance)
+SEVERITY:  Critical
+STATUS:    Mitigated
+MITIGATION: Pin exact version in requirements files.
+            Verify hash of downloaded package in CI.
+            Subscribe to security advisories for the library.
+            pip-audit scans on every CI run (2.07 ✅).
+OWNER:     Neo
+CHECKLIST: 2.07 ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+T-023  Compromised Python Runtime
+THREAT:    The Python installation on the host system i
