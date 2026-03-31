@@ -284,7 +284,7 @@ def load_from_memory() -> int:
     global _field
     records = memory.read_by_type("INTAKE")
     _field = [
-        {"input": r["input"], "type": r.get("context", {}).get("type", "unknown")}
+        {"input": r["input"], "type": (r.get("context") or {}).get("type", "unknown")}
         for r in records if r.get("input")
     ]
     return len(_field)
