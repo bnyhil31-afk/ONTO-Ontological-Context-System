@@ -1,290 +1,447 @@
 """
 modules/contextualize.py
 
-The system's understanding layer.
-This is where raw input becomes meaning.
-It places each new input into the field of everything already known —
-weighted by distance, complexity, and size.
+CONTEXTUALIZE — the RELATE + NAVIGATE layer.
 
-Plain English: This is where the system thinks.
-Not just about what you said —
-but about what it means given everything else.
+Takes an intake package and:
+  1. Calls graph.relate() to build edges from this input
+  2. Calls graph.navigate() to find relevant prior context
+  3. Returns an enriched package with graph-backed context
 
-This is the Living Field — in code.
+The graph records observations, not truth claims.
+Everything surfaced here is "observed N times" — never "is true."
+
+Anti-echo-chamber design:
+  - Source diversity is tracked: 3 mentions from 1 session ≠ 3 mentions from 3 sessions
+  - New context that contradicts established context is flagged, not silently merged
+  - The field size (how much we've seen) is always visible
+  - The system does not boost things simply because they appear often
+
+Rule 1.09A: Code, tests, and documentation must always agree.
 """
 
-import math
-from typing import Any, Dict, List, Set
-from modules import memory
+import os
+import sys
+from typing import Any, Dict, List, Optional
 
-# ─────────────────────────────────────────────────────────────────────────────
-# THE FIELD
-# In a full system, this would be a vector database or knowledge graph.
-# In this MVP, it is a lightweight in-memory + SQLite field.
-# It grows with every interaction.
-# ─────────────────────────────────────────────────────────────────────────────
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_field: List[Dict[str, str]] = []  # In-memory for this session
+from modules import graph, memory
 
+# ---------------------------------------------------------------------------
+# MODULE STATE
+# ---------------------------------------------------------------------------
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN CONTEXTUALIZE FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build(package: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Takes an intake package and builds context around it.
-
-    Args:
-        package: An intake package from modules/intake.py.
-
-    Returns:
-        Dict: The original package enriched with a 'context' key containing:
-            related_count   — number of similar inputs seen before
-            related_samples — up to 3 examples of related past inputs
-            distance        — how new this input is (0.0=familiar, 1.0=new)
-            weight          — how much attention this input deserves (0.0-1.0)
-            field_size      — total number of inputs the system has seen
-            summary         — plain English description of the context
-    """
-    input_text: str = package.get("clean", "")
-    input_type: str = package.get("input_type", "unknown")
-    complexity: str = package.get("complexity", "simple")
-
-    # Find related entries from memory
-    related: List[Dict[str, Any]] = _find_related(input_text)
-
-    # Calculate distance — how familiar is this?
-    distance: float = _calculate_distance(input_text, related)
-
-    # Calculate weight — how much attention does this deserve?
-    weight: float = _calculate_weight(
-        distance=distance,
-        complexity=complexity,
-        word_count=package.get("word_count", 1)
-    )
-
-    # Grow the field with this new input
-    _add_to_field(input_text, input_type)
-
-    # Build plain summary
-    summary: str = _summarize(distance, related, package)
-
-    context: Dict[str, Any] = {
-        "related_count": len(related),
-        "related_samples": [r["input"][:60] for r in related[:3]],
-        "distance": round(distance, 3),
-        "weight": round(weight, 3),
-        "field_size": len(_field),
-        "summary": summary
-    }
-
-    # Record to memory
-    memory.record(
-        event_type="CONTEXT",
-        input_data=input_text,
-        context=context,
-        confidence=1.0 - distance,
-        notes=f"Field size: {len(_field)} | Weight: {weight:.2f}"
-    )
-
-    # Enrich and return the package
-    enriched: Dict[str, Any] = {**package, "context": context}
-    return enriched
+# _field is kept for backward compatibility with tests that patch it.
+# In the graph-backed implementation, this is populated from navigate results.
+_field: List[Dict[str, Any]] = []
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FIND RELATED — SIMPLE KEYWORD OVERLAP FOR MVP
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _find_related(text: str) -> List[Dict[str, Any]]:
-    """
-    Finds entries in the field that share meaningful words with the input.
-    MVP version uses keyword overlap.
-    Future version: vector embeddings.
-
-    Args:
-        text: The cleaned input string to find relatives for.
-
-    Returns:
-        List[Dict]: Up to 10 related field entries, sorted by relevance.
-    """
-    words: Set[str] = set(_normalize(text).split())
-    stopwords: Set[str] = {
-        "the", "a", "an", "is", "it", "in", "on", "at", "to", "for",
-        "of", "and", "or", "but", "i", "you", "we", "they", "my", "your"
-    }
-    keywords: Set[str] = words - stopwords
-
-    if not keywords:
-        return []
-
-    related: List[Dict[str, Any]] = []
-    for entry in _field:
-        entry_words: Set[str] = set(_normalize(entry["input"]).split()) - stopwords
-        overlap: Set[str] = keywords & entry_words
-        if overlap:
-            score: float = len(overlap) / max(len(keywords), 1)
-            related.append({**entry, "overlap_score": score})
-
-    related.sort(key=lambda x: x["overlap_score"], reverse=True)
-    return related[:10]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DISTANCE — HOW NEW IS THIS?
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _calculate_distance(text: str, related: List[Dict[str, Any]]) -> float:
-    """
-    Calculates how new or familiar this input is.
-
-    Args:
-        text: The cleaned input string.
-        related: Related entries found in the field.
-
-    Returns:
-        float: A value between 0.0 and 1.0.
-            0.0 = very familiar, seen many times before
-            1.0 = completely new, nothing like it in the field
-    """
-    if not _field:
-        return 1.0  # First ever input — maximally new
-
-    if not related:
-        return 0.95  # Nothing related found
-
-    best_score: float = related[0].get("overlap_score", 0)
-    distance: float = 1.0 - best_score
-    return max(0.0, min(1.0, distance))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# WEIGHT — HOW MUCH ATTENTION DOES THIS DESERVE?
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _calculate_weight(
-    distance: float,
-    complexity: str,
-    word_count: int
-) -> float:
-    """
-    Combines distance, complexity, and size into a single weight.
-    Higher weight = deserves more careful consideration.
-    The three governing forces — distance, complexity, size — all here.
-
-    Args:
-        distance: How new this input is (0.0 to 1.0).
-        complexity: 'simple', 'moderate', or 'complex'.
-        word_count: Number of words in the input.
-
-    Returns:
-        float: A weight value between 0.0 and 1.0.
-    """
-    complexity_scores: Dict[str, float] = {
-        "simple":   0.2,
-        "moderate": 0.5,
-        "complex":  0.9
-    }
-    complexity_score: float = complexity_scores.get(complexity, 0.5)
-
-    # Size factor — logarithmic so large inputs don't dominate completely
-    size_score: float = min(1.0, math.log1p(word_count) / math.log1p(200))
-
-    # Weighted combination
-    weight: float = (distance * 0.4) + (complexity_score * 0.4) + (size_score * 0.2)
-    return round(min(1.0, weight), 3)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GROW THE FIELD
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _add_to_field(text: str, input_type: str) -> None:
-    """
-    Adds this input to the living field.
-
-    Args:
-        text: The cleaned input string.
-        input_type: The classified type of this input.
-    """
-    _field.append({
-        "input": text,
-        "type": input_type
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PLAIN LANGUAGE SUMMARY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _summarize(
-    distance: float,
-    related: List[Dict[str, Any]],
-    package: Dict[str, Any]
-) -> str:
-    """
-    Produces a plain English description of what the system sees.
-
-    Args:
-        distance: How new this input is (0.0 to 1.0).
-        related: Related entries found in the field.
-        package: The original intake package.
-
-    Returns:
-        str: A plain English summary of the current context.
-    """
-    familiarity: str = (
-        "This is very familiar territory." if distance < 0.2 else
-        "This is somewhat familiar." if distance < 0.5 else
-        "This is mostly new." if distance < 0.8 else
-        "This is completely new territory."
-    )
-
-    related_note: str = (
-        f"Found {len(related)} related topic(s) from past interactions."
-        if related else
-        "No related topics found yet."
-    )
-
-    complexity_note: str = {
-        "simple":   "The input is simple and direct.",
-        "moderate": "The input has moderate complexity.",
-        "complex":  "The input is complex and deserves careful consideration."
-    }.get(package.get("complexity", "simple"), "")
-
-    return f"{familiarity} {related_note} {complexity_note}"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _normalize(text: str) -> str:
-    """
-    Lowercases and strips punctuation for comparison.
-
-    Args:
-        text: Any string.
-
-    Returns:
-        str: Lowercase, punctuation-free version for comparison.
-    """
-    return "".join(c if c.isalnum() or c == " " else " " for c in text.lower())
-
+# ---------------------------------------------------------------------------
+# PUBLIC INTERFACE
+# ---------------------------------------------------------------------------
 
 def load_from_memory() -> int:
     """
-    Rebuilds the field from the permanent memory record.
-    Call this on boot to restore the field from previous sessions.
+    Rebuild the in-memory field from past sessions.
+    Called at system boot.
 
-    Returns:
-        int: The number of entries loaded into the field.
+    Returns the number of past entries loaded.
     """
     global _field
-    records = memory.read_by_type("INTAKE")
-    _field = [
-        {"input": r["input"], "type": (r.get("context") or {}).get("type", "unknown")}
-        for r in records if r.get("input")
+    _field = []
+
+    try:
+        records = memory.read_all()
+        for record in records:
+            context = record.get("context") or {}
+            text = record.get("notes") or ""
+            if text:
+                _field.append({
+                    "text": text,
+                    "event_type": record.get("event_type", "UNKNOWN"),
+                    "timestamp": record.get("timestamp", ""),
+                })
+        return len(_field)
+    except Exception:
+        return 0
+
+
+def build(package: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Enrich an intake package with graph-backed context.
+
+    Steps:
+      1. Relate — add this input to the graph
+      2. Navigate — find relevant prior context
+      3. Examine — check consistency, novelty, source diversity
+      4. Build enriched package — backward-compatible interface
+
+    The enriched package carries:
+      - All original intake fields
+      - context dict (backward compat: related_count, distance, weight, field_size)
+      - graph_context: the raw navigate results
+      - examination: the four-question examination
+
+    No synthetic data is introduced. Every edge traces to this input.
+    """
+    global _field
+
+    text = package.get("clean") or package.get("raw") or ""
+
+    # Step 1: RELATE — add this input to the graph
+    relate_result = _safe_relate(text, package)
+
+    # Step 2: NAVIGATE — find relevant prior context
+    navigate_results = _safe_navigate(text)
+
+    # Step 3: EXAMINE — honest examination before surfacing
+    examination = _examine(navigate_results, package, relate_result)
+
+    # Step 4: Build the enriched package
+    enriched = dict(package)  # preserve all intake fields
+
+    # Compute distance and weight from navigate results
+    distance, weight = _compute_axes(navigate_results, package)
+
+    # Build legacy context dict (backward compat with tests)
+    related_count = len(navigate_results)
+    related_samples = [
+        r.get("concept", "") for r in navigate_results[:3] if r.get("concept")
     ]
-    return len(_field)
+
+    context = {
+        "related_count": related_count,
+        "related_samples": related_samples,
+        "distance": distance,
+        "weight": weight,
+        "field_size": len(_field),
+        "summary": _build_summary(navigate_results, examination),
+    }
+
+    # Add graph context to enriched package
+    enriched["context"] = context
+    enriched["distance"] = distance
+    enriched["weight"] = weight
+    enriched["graph_context"] = navigate_results
+    enriched["examination"] = examination
+    enriched["relate_result"] = relate_result
+
+    # Update field (backward compat)
+    _field.append({
+        "text": text,
+        "event_type": "CONTEXTUALIZE",
+        "timestamp": "",
+    })
+
+    # Record to memory
+    try:
+        memory.record(
+            event_type="CONTEXTUALIZE",
+            notes=text[:200] if text else "",
+            context={
+                "related_count": related_count,
+                "distance": round(distance, 3),
+                "weight": round(weight, 3),
+                "examination_depth": examination.get("depth_signal", "simple"),
+            }
+        )
+    except Exception:
+        pass
+
+    return enriched
+
+
+# ---------------------------------------------------------------------------
+# INTERNAL: RELATE
+# ---------------------------------------------------------------------------
+
+def _safe_relate(text: str, package: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Call graph.relate() safely. Returns empty result on failure.
+    """
+    if not text or not text.strip():
+        return {"concepts": [], "edges_created": 0, "nodes_created": 0}
+
+    try:
+        return graph.relate(package)
+    except Exception:
+        return {"concepts": [], "edges_created": 0, "nodes_created": 0}
+
+
+# ---------------------------------------------------------------------------
+# INTERNAL: NAVIGATE
+# ---------------------------------------------------------------------------
+
+def _safe_navigate(text: str) -> List[Dict[str, Any]]:
+    """
+    Call graph.navigate() safely. Returns empty list on failure.
+    Falls back to _field-based word overlap if graph is unavailable.
+    """
+    if not text or not text.strip():
+        return []
+
+    try:
+        results = graph.navigate(text)
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # Fallback: word overlap against _field (original behavior)
+    return _word_overlap_fallback(text)
+
+
+def _word_overlap_fallback(text: str) -> List[Dict[str, Any]]:
+    """
+    Original word-overlap context search.
+    Used as fallback when graph is unavailable.
+    """
+    words = set(text.lower().split())
+    results = []
+
+    for entry in _field[-50:]:  # last 50 entries
+        entry_text = entry.get("text", "")
+        entry_words = set(entry_text.lower().split())
+        overlap = words & entry_words
+        if len(overlap) >= 2:
+            results.append({
+                "concept": entry_text[:60],
+                "effective_weight": len(overlap) / max(len(words), 1),
+                "times_seen": 1,
+                "source": "field_overlap",
+                "days_since": 0,
+            })
+
+    results.sort(key=lambda r: r.get("effective_weight", 0), reverse=True)
+    return results[:10]
+
+
+# ---------------------------------------------------------------------------
+# INTERNAL: EXAMINE
+# ---------------------------------------------------------------------------
+
+def _examine(
+    navigate_results: List[Dict[str, Any]],
+    package: Dict[str, Any],
+    relate_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    The four-question examination engine.
+
+    Asks four honest questions before surfacing:
+      1. Consistency — does this align with or contradict prior context?
+      2. Novelty — is this the first time we're seeing this?
+      3. Source diversity — how many distinct inputs contributed?
+      4. Depth signal — what level of engagement does this call for?
+
+    Returns an examination dict that travels with the enriched package.
+    """
+    complexity = package.get("complexity", "simple")
+
+    # Q1: Consistency
+    contradiction_flags = _check_consistency(navigate_results, package)
+    if contradiction_flags:
+        consistency = "contradicted"
+    elif navigate_results:
+        consistency = "aligned"
+    else:
+        consistency = "new"
+
+    # Q2: Novelty
+    new_concepts = relate_result.get("concepts", [])
+    total_navigate = len(navigate_results)
+    if total_navigate == 0:
+        novelty = "first_seen"
+    elif total_navigate <= 2:
+        novelty = "emerging"
+    else:
+        novelty = "established"
+
+    # Q3: Source diversity
+    # Count unique source record IDs — how many distinct inputs contributed
+    source_ids = set()
+    for r in navigate_results:
+        src = r.get("source_record_id") or r.get("source")
+        if src:
+            source_ids.add(str(src))
+    source_diversity = len(source_ids)
+
+    # Total times seen across all results
+    total_observations = sum(
+        r.get("times_seen", 1) for r in navigate_results
+    )
+
+    # Diversity ratio: if all observations from 1 source, diversity is low
+    if total_observations > 0 and source_diversity > 0:
+        diversity_ratio = min(source_diversity / max(total_observations, 1), 1.0)
+    else:
+        diversity_ratio = 0.0
+
+    # Q4: Depth signal
+    depth_signal = _assess_depth(complexity, navigate_results, package)
+
+    return {
+        "consistency": consistency,
+        "novelty": novelty,
+        "source_diversity": source_diversity,
+        "total_observations": total_observations,
+        "diversity_ratio": round(diversity_ratio, 3),
+        "contradiction_flags": contradiction_flags,
+        "new_concepts": new_concepts,
+        "depth_signal": depth_signal,
+    }
+
+
+def _check_consistency(
+    navigate_results: List[Dict[str, Any]],
+    package: Dict[str, Any],
+) -> List[str]:
+    """
+    Check for potential contradictions between new input and prior context.
+
+    A contradiction is flagged when the new input introduces concepts
+    that directly conflict with high-weight established context.
+
+    Conservative: only flags obvious structural contradictions.
+    Does not attempt semantic reasoning.
+    """
+    flags = []
+    text = (package.get("clean") or "").lower()
+    words = set(text.split())
+
+    # Simple negation check: if input contains "not X" or "no X"
+    # and prior context has high weight on X, flag it
+    negations = {"not", "no", "never", "without", "don't", "doesn't", "isn't", "aren't"}
+    negated_words = set()
+
+    words_list = list(words)
+    for i, word in enumerate(words_list):
+        if word in negations and i + 1 < len(words_list):
+            negated_words.add(words_list[i + 1])
+
+    for result in navigate_results:
+        concept = (result.get("concept") or "").lower()
+        weight = result.get("effective_weight", 0)
+
+        # Only flag high-weight established concepts
+        if weight > 0.5 and concept:
+            concept_words = set(concept.split())
+            if concept_words & negated_words:
+                flags.append(
+                    f"Input may contradict established context: '{concept}' "
+                    f"(observed {result.get('times_seen', 1)} times)"
+                )
+
+    return flags[:3]  # cap at 3 flags
+
+
+def _assess_depth(
+    complexity: str,
+    navigate_results: List[Dict[str, Any]],
+    package: Dict[str, Any],
+) -> str:
+    """
+    Determine the appropriate depth of response.
+
+    simple — clean, minimal output. No hand-holding.
+    moderate — brief context if genuinely relevant.
+    complex — fuller examination appropriate.
+    """
+    # Safety always takes priority — simple escalation
+    if package.get("safety"):
+        return "simple"
+
+    # Complex input + rich context = complex depth
+    if complexity in ("complex", "detailed") and len(navigate_results) >= 3:
+        return "complex"
+
+    # Complex input + sparse context = moderate
+    if complexity in ("complex", "detailed"):
+        return "moderate"
+
+    # Simple input — stay simple regardless of context richness
+    return "simple"
+
+
+# ---------------------------------------------------------------------------
+# INTERNAL: AXES + SUMMARY
+# ---------------------------------------------------------------------------
+
+def _compute_axes(
+    navigate_results: List[Dict[str, Any]],
+    package: Dict[str, Any],
+) -> tuple:
+    """
+    Compute distance and weight from navigate results.
+
+    Distance: how far the current input is from prior context.
+              0.0 = very familiar, 1.0 = completely new.
+    Weight: combined relevance score.
+    """
+    if not navigate_results:
+        # Nothing found — completely new territory
+        distance = 1.0
+        weight = _weight_from_complexity(package.get("complexity", "simple"))
+        return distance, weight
+
+    # Average effective weight of top results
+    top = navigate_results[:5]
+    avg_weight = sum(r.get("effective_weight", 0) for r in top) / len(top)
+
+    # Distance is inverse of familiarity
+    distance = max(0.0, min(1.0, 1.0 - avg_weight))
+
+    # Weight from the best result + complexity modifier
+    best_weight = max(r.get("effective_weight", 0) for r in top)
+    complexity_modifier = {
+        "simple": 0.0,
+        "moderate": 0.1,
+        "complex": 0.2,
+        "detailed": 0.2,
+    }.get(package.get("complexity", "simple"), 0.0)
+
+    weight = min(1.0, best_weight + complexity_modifier)
+
+    return round(distance, 4), round(weight, 4)
+
+
+def _weight_from_complexity(complexity: str) -> float:
+    """Base weight for new inputs with no prior context."""
+    return {
+        "simple": 0.3,
+        "moderate": 0.4,
+        "complex": 0.5,
+        "detailed": 0.5,
+    }.get(complexity, 0.3)
+
+
+def _build_summary(
+    navigate_results: List[Dict[str, Any]],
+    examination: Dict[str, Any],
+) -> str:
+    """
+    Build a brief summary for the legacy context.summary field.
+    Used by tests that check context structure.
+    """
+    novelty = examination.get("novelty", "first_seen")
+    related_count = len(navigate_results)
+    consistency = examination.get("consistency", "new")
+
+    if novelty == "first_seen":
+        return "This is completely new territory — no prior context found."
+    elif novelty == "emerging":
+        return (
+            f"This connects to {related_count} prior observation(s). "
+            f"Pattern is emerging."
+        )
+    elif consistency == "contradicted":
+        return (
+            f"This connects to {related_count} prior observation(s). "
+            f"Potential contradiction with established context detected."
+        )
+    else:
+        return (
+            f"This connects to {related_count} prior observation(s). "
+            f"Pattern is established."
+        )
