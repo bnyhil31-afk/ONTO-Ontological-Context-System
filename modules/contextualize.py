@@ -26,7 +26,14 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules import graph, memory
+from modules import memory
+
+try:
+    from modules import graph as _graph_module
+    _GRAPH_AVAILABLE = True
+except ImportError:
+    _graph_module = None  # type: ignore
+    _GRAPH_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # MODULE STATE
@@ -159,12 +166,13 @@ def build(package: Dict[str, Any]) -> Dict[str, Any]:
 def _safe_relate(text: str, package: Dict[str, Any]) -> Dict[str, Any]:
     """
     Call graph.relate() safely. Returns empty result on failure.
+    Falls back gracefully if graph module is not available.
     """
-    if not text or not text.strip():
+    if not text or not text.strip() or not _GRAPH_AVAILABLE or _graph_module is None:
         return {"concepts": [], "edges_created": 0, "nodes_created": 0}
 
     try:
-        return graph.relate(package)
+        return _graph_module.relate(package)
     except Exception:
         return {"concepts": [], "edges_created": 0, "nodes_created": 0}
 
@@ -178,11 +186,11 @@ def _safe_navigate(text: str) -> List[Dict[str, Any]]:
     Call graph.navigate() safely. Returns empty list on failure.
     Falls back to _field-based word overlap if graph is unavailable.
     """
-    if not text or not text.strip():
-        return []
+    if not text or not text.strip() or not _GRAPH_AVAILABLE or _graph_module is None:
+        return _word_overlap_fallback(text)
 
     try:
-        results = graph.navigate(text)
+        results = _graph_module.navigate(text)
         if results:
             return results
     except Exception:
