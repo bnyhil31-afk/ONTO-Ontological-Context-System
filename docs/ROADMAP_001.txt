@@ -266,6 +266,97 @@ cannot see the destination yet.
     The system monitors its own second and third order effects
     and reports them honestly. It knows what it is doing to
     the world and says so.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INPUT ADAPTER ARCHITECTURE — UNIVERSAL INPUT DESIGN
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ONTO is not a text system. It is a context system.
+
+The three governing axes — distance, complexity, size — are
+deliberately data-type agnostic. They describe any input,
+regardless of format. The five-step loop does not care what
+the raw input was. It cares about the package.
+
+This means ONTO is designed to accept any input type that
+can be converted into a classified, weighted intake package.
+
+The architecture:
+
+  Raw input (any format)
+       ↓
+  INPUT ADAPTER — converts format to intake package
+       ↓
+  intake package (standard dict — same for all types)
+       ↓
+  CONTEXTUALIZE → SURFACE → GOVERN → REMEMBER
+  (unchanged — format-agnostic)
+
+The intake package contract is the universal interface.
+Every adapter produces the same structure. Everything
+downstream is already built to handle it.
+
+Current adapter (Stage 1):
+  ✅ Text / string — intake.receive()
+     Covers: questions, commands, statements, numbers,
+             any human-typed input
+
+Planned adapters by stage:
+
+  Stage 1 (current sprint):
+  ⬜ Structured data — JSON, CSV, database records
+     The system can already classify and process structured
+     inputs when passed as strings. A dedicated adapter adds
+     field-level classification and relationship mapping.
+
+  Stage 2 (intranet / small team):
+  ⬜ Documents — PDF, DOCX, Markdown
+     Pre-process to extract text, metadata, and structure.
+     Preserve provenance (author, date, source).
+  ⬜ System events — logs, alerts, API calls, webhooks
+     Ingest from external systems. Classify by event severity.
+     Treat each event as a first-class context input.
+  ⬜ Other AI outputs — treat model outputs as inputs
+     The output of one AI system becomes context for ONTO.
+     Source type: derived. Provenance discount applied.
+
+  Stage 3 (federated / enterprise):
+  ⬜ Images — with appropriate vision processing module
+     Classification at intake based on detected content.
+     Shell stores metadata only — payload encrypted.
+  ⬜ Audio — speech and environmental sound
+     Transcription as pre-processing step.
+     Original audio stored at classification level of content.
+  ⬜ Sensor data — IoT, biometric, environmental streams
+     Source type: sensor. Continuous ingestion support.
+     Temporal decay applied — older readings weight less.
+
+  Stage 4 (P2P / public commons):
+  ⬜ Network signals — context from other ONTO nodes
+     The most important adapter. Context arrives from peers.
+     Provenance verification is mandatory.
+     Source type: derived. Trust level from node identity.
+  ⬜ Video — frame-level and temporal context
+     High complexity, high size. Governed accordingly.
+
+What every adapter must do:
+  1. Convert raw input to a classified intake package
+  2. Set source_type correctly (human | system | sensor | derived)
+  3. Apply classification based on content, not format
+  4. Preserve provenance — where did this come from?
+  5. Never introduce synthetic data — every edge traces to input
+
+What no adapter may do:
+  - Bypass the safety check layer
+  - Bypass classification
+  - Auto-proceed past GOVERN without human authorization
+  - Strip provenance information
+
+The human sovereignty checkpoint applies to all input types.
+A sensor reading that crosses a consequence threshold
+requires the same human review as a text input that does.
+The format changes. The principles do not.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
