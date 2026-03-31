@@ -178,12 +178,13 @@ class TestMerkleChain(_MemoryTestBase):
         memory.record(event_type="TEST", notes="genesis")
         # Bypass record() and insert a record with a deliberately wrong hash
         conn = sqlite3.connect(self.test_db)
-        conn.execute("""
-            INSERT INTO events (timestamp, event_type, notes, chain_hash)
-            VALUES ('2026-01-01T00:00:00+00:00', 'FABRICATED',
-                    'tampered record', 'aaaaaaaabbbbbbbbccccccccdddddddd'
-                    'eeeeeeeeffff00001111222233334444')
-        """)
+        fake_hash = "a" * 64
+        conn.execute(
+            "INSERT INTO events (timestamp, event_type, notes, chain_hash) "
+            "VALUES ('2026-01-01T00:00:00+00:00', 'FABRICATED', "
+            "'tampered record', ?)",
+            (fake_hash,)
+        )
         conn.commit()
         conn.close()
         result = memory.verify_chain()
