@@ -192,7 +192,10 @@ def _build_simple_display(
     elif confidence_val >= 0.4:
         lines.append(f"Moderate confidence.")
     elif confidence_val > 0.0:
-        lines.append("Low confidence — limited prior context. Human judgment recommended.")
+        lines.append(
+            "Low confidence — limited prior context."
+            " Human judgment recommended."
+        )
     else:
         lines.append("Confidence: none — new territory.")
 
@@ -220,8 +223,6 @@ def _build_moderate_display(
     confidence_profile = examination.get("confidence_profile") or {}
     level = confidence_profile.get("level", "none")
     explanation = confidence_profile.get("explanation", "")
-    novelty = examination.get("novelty", "first_seen")
-    consistency = examination.get("consistency", "new")
     provenance = examination.get("provenance_summary", "")
 
     lines = [f"Input: {text}", ""]
@@ -429,7 +430,7 @@ def _compute_confidence(
       == 0.0  → none (completely new territory, distance = 1.0)
     """
     context = enriched.get("context") or {}
-    # Top-level distance (set explicitly by callers) takes priority over context["distance"]
+    # Top-level distance takes priority over context["distance"]
     distance = enriched.get("distance", context.get("distance", 1.0))
     base = max(0.0, min(1.0, 1.0 - distance))
 
@@ -440,10 +441,10 @@ def _compute_confidence(
 
     # Graph data exists — modulate by confidence profile
     level_adjustments = {
-        "high":     0.15,
+        "high": 0.15,
         "moderate": 0.05,
-        "low":     -0.05,
-        "none":    -0.10,
+        "low": -0.05,
+        "none": -0.10,
     }
     confidence_profile = examination.get("confidence_profile") or {}
     level = confidence_profile.get("level", "none")
