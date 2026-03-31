@@ -108,6 +108,9 @@ _INTEGRITY_PATTERNS = [
         r"\bignore\s+your\s+principles\b",
         r"\bforget\s+your\s+(rules|instructions|principles)\b",
         r"\boverride\s+your\b",
+        r"\bdisable\s+(the\s+|your\s+)?principles\b",
+        r"\bremove\s+(the\s+|your\s+)?principles\b",
+        r"\bbypass\s+(the\s+|your\s+)?principles\b",
         r"\bpretend\s+you\s+(have\s+no|don'?t\s+have)\b",
         r"\byou\s+(are\s+now|must\s+act\s+as|should\s+be)\s+a\b",
         r"\bjailbreak\b",
@@ -115,6 +118,8 @@ _INTEGRITY_PATTERNS = [
         r"\bdeveloper\s+mode\b",
         r"\bdisable\s+(safety|filter|constraint)\b",
         r"\bbypass\s+(your|the)\b",
+        r"\bact\s+as\s+if\s+you\s+have\s+no\b",
+        r"\bignore\s+(all\s+)?(previous\s+)?instructions\b",
     ]
 ]
 
@@ -385,14 +390,21 @@ def _sanitize(text: str) -> tuple:
 
 def _assess_complexity(text: str, word_count: int) -> str:
     """
-    Assesses input complexity using the three-axis size/complexity model.
-    Returns: simple | moderate | complex
+    Assesses input complexity based on sentence count.
+    Returns: empty | simple | moderate | complex
     """
-    if word_count == 0:
+    if not text or word_count == 0:
         return "empty"
-    elif word_count <= 10:
+
+    # Count sentence-ending punctuation
+    sentence_count = len(re.findall(r'[.!?]+', text))
+    # If no punctuation, treat whole text as one sentence
+    if sentence_count == 0:
+        sentence_count = 1
+
+    if sentence_count <= 1:
         return "simple"
-    elif word_count <= 50:
+    elif sentence_count <= 3:
         return "moderate"
     else:
         return "complex"
@@ -401,23 +413,38 @@ def _assess_complexity(text: str, word_count: int) -> str:
 def _classify_input_type(text: str) -> str:
     """
     Classifies the type of input.
-    Returns: question | statement | request | number | unknown
+    Returns: question | statement | request | number | text | unknown
     """
     if not text or not text.strip():
         return "unknown"
 
     stripped = text.strip()
 
-    # Pure numeric input
-    if re.match(r"^[\d\s\.,\-\+\(\)\/\%]+$", stripped):
+    # Pure numeric input (including formatted numbers/phone/currency)
+    if re.match(r"^[\d\s\.,\-\+\(\)\/\%\$\£\€\#\@]+$", stripped):
         return "number"
 
-    if stripped.endswith("?"):
+    lower = stripped.lower()
+
+    # Question words at start — detect questions even without '?'
+    question_starters = (
+        "what", "who", "where", "when", "why", "how",
+        "which", "whose", "whom", "is ", "are ", "was ",
+        "were ", "do ", "does ", "did ", "can ", "could ",
+        "will ", "would ", "should ", "have ", "has ", "had "
+    )
+    if stripped.endswith("?") or any(
+        lower.startswith(w) for w in question_starters
+    ):
         return "question"
-    elif any(stripped.lower().startswith(w) for w in [
+
+    # Request phrases
+    request_starters = (
         "please", "can you", "could you", "would you",
         "help me", "tell me", "show me", "explain"
-    ]):
+    )
+    if any(lower.startswith(w) for w in request_starters):
         return "request"
-    else:
-        return "statement"
+
+    # Default
+    return "statement"
