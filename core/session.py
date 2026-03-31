@@ -1,373 +1,583 @@
 """
 core/session.py
 
-Session management for ONTO.
+Session management layer for ONTO.
 Implements item 2.09 of the pre-launch security checklist.
 
-Addresses threat model T-013 (Session Token Portability):
-  - Tokens are 256-bit cryptographically random — not guessable
-  - Short-lived: idle timeout + maximum duration enforced
-  - One active session at a time (Stage 1 is single-user)
-  - Every session event recorded in the permanent audit trail
-  - Tokens live in memory only — never written to disk
+Design decisions (all from THREAT_MODEL_001, REVIEW_001, and CRE-SPEC-001):
 
-Design decisions:
-  - Sessions are in-memory for Stage 1 (local, single-user)
-  - Token rotation on sensitive operations reduces replay window
-  - Audit trail records start, rotation, expiry, and termination
-  - Swap interface: same contract as auth — replace without touching
-    anything else in the system
+  TOKEN SECURITY
+  - Session token is 32 bytes (256-bit) of cryptographic randomness.
+  - The raw token is NEVER stored — only its SHA-256 hash is held in memory.
+    This means even if the session store is read, tokens cannot be replayed.
+  - Tokens are rotated on each authenticated request, limiting the replay
+    window for any intercepted token (T-013 mitigation).
 
-Stage 1 (now):   In-memory, single session, local only
-Stage 2 (future): Multi-session, network-bound tokens, SSO integration
+  CONNECTION BINDING (T-013)
+  - Sessions are optionally bound to a connection fingerprint (e.g., IP address
+    hash). A token presented from an unrecognized connection is rejected.
+    This is configurable — binding can be disabled for legitimate roaming
+    clients (e.g., mobile users on changing IPs).
+
+  REGULATORY FORWARD-COMPATIBILITY
+  - Every session carries a user_id field. For Stage 1 single-user deployment
+    this is always "local". For Stage 2 multi-user it becomes a real identity.
+    The schema does not change between stages — only the value.
+  - Every session carries a consent_reference field. For Stage 1 this is None
+    (the local user owns the system; implicit consent). For Stage 2 this will
+    point to the consent ledger record that authorizes this session. This
+    satisfies GDPR Article 7 (conditions for consent) and CCPA's right-to-know
+    requirement without requiring a schema migration later.
+  - data_classification tracks the highest-sensitivity classification of any
+    data touched during the session. This is required for GDPR Article 30
+    (records of processing activities) and informs retention decisions.
+
+  AUDIT TRAIL
+  - Every session lifecycle event is written to the audit trail:
+    SESSION_START, SESSION_END, SESSION_EXPIRED, SESSION_ROTATED,
+    SESSION_INVALID_TOKEN, SESSION_BINDING_VIOLATION.
+  - Tokens are NEVER written to the audit trail — only their hash prefix
+    (first 8 hex characters) for correlation without exposure.
+
+  STAGE 1 CONSTRAINTS
+  - Single session at a time (MAX_CONCURRENT_SESSIONS = 1).
+    A new authentication while a session is active invalidates the prior
+    session and records a SESSION_SUPERSEDED event.
+  - Thread-safe: a lock protects all session state mutations. This is
+    over-engineered for Stage 1 single-user, but it costs nothing and
+    means the session manager is safe for Stage 2 concurrent use without
+    modification.
+
+  EXPIRY MODEL
+  - Absolute TTL: session expires at created_at + TTL regardless of activity.
+  - Sliding TTL: session expiry extends on each valid use, up to a
+    configurable maximum lifetime. Disabled by default (absolute mode).
+  - Configurable via environment variables (see core/config.py).
+
+Architecture:
+  Stage 1 (now):    Single user, local passphrase auth, absolute TTL.
+  Stage 2 (future): Multi-user, roles, consent references, sliding TTL.
+  Stage 3 (future): Federated sessions, cross-node token verification.
+
+Swap interface contract:
+  create_session(user_id, connection_fingerprint) -> SessionToken
+  validate_session(token, connection_fingerprint)  -> SessionValidation
+  end_session(token)                               -> None
 
 Usage:
     from core.session import session_manager
-    token = session_manager.start(identity="operator")
-    record = session_manager.validate(token)
-    if record:
-        new_token = session_manager.rotate(token)
-    session_manager.terminate(token)
+    from core.audit import write_audit_event  # injected at startup
+
+    token = session_manager.create_session(
+        user_id="local",
+        connection_fingerprint=request_ip_hash,
+        audit_fn=write_audit_event
+    )
+
+    validation = session_manager.validate_session(
+        token=bearer_token,
+        connection_fingerprint=request_ip_hash,
+        audit_fn=write_audit_event
+    )
+    if not validation.valid:
+        return 401
+
+    session_manager.end_session(token, audit_fn=write_audit_event)
 """
 
+import hashlib
+import os
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
-from modules import memory
+# ---------------------------------------------------------------------------
+# CONSTANTS — all overridable via environment variables (see core/config.py)
+# ---------------------------------------------------------------------------
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DEFAULTS — overridden by core/config.py if available
-# ─────────────────────────────────────────────────────────────────────────────
+# Raw token length in bytes. 32 bytes = 256 bits of entropy.
+TOKEN_BYTES = 32
 
-_DEFAULT_IDLE_TIMEOUT = 1800       # 30 minutes idle
-_DEFAULT_MAX_DURATION = 28800      # 8 hours absolute maximum
-_TOKEN_BYTES = 32                  # 256-bit token
+# Default session lifetime in seconds. 1 hour is a reasonable default
+# that balances usability (you don't get logged out mid-work) with
+# security (a stolen token has a limited window).
+DEFAULT_TTL_SECONDS = int(os.environ.get("ONTO_SESSION_TTL_SECONDS", "3600"))
+
+# Maximum lifetime for sliding TTL mode. Even a highly active session
+# must re-authenticate after this period. Protects against sessions
+# that were legitimately started but later compromised.
+MAX_LIFETIME_SECONDS = int(os.environ.get("ONTO_SESSION_MAX_LIFETIME_SECONDS", "28800"))  # 8 hours
+
+# Whether to use sliding TTL (extends on use) or absolute TTL.
+# Absolute is the secure default. Sliding is more user-friendly for
+# long working sessions but widens the stolen-token window.
+SLIDING_TTL = os.environ.get("ONTO_SESSION_SLIDING_TTL", "false").lower() == "true"
+
+# Whether to enforce connection binding. True = reject tokens presented
+# from a different connection fingerprint than the one used to create them.
+# Set to False only if your deployment involves legitimate connection changes
+# (e.g., mobile clients that change IP addresses mid-session).
+ENFORCE_CONNECTION_BINDING = (
+    os.environ.get("ONTO_SESSION_BINDING", "true").lower() == "true"
+)
+
+# Maximum concurrent sessions. 1 for Stage 1 single-user.
+# Increase to support multi-user in Stage 2 without changing this file.
+MAX_CONCURRENT_SESSIONS = int(os.environ.get("ONTO_MAX_SESSIONS", "1"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SESSION RECORD
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# DATA STRUCTURES
+# ---------------------------------------------------------------------------
 
 @dataclass
 class SessionRecord:
     """
-    Represents a single active session.
+    The internal representation of an active session.
 
-    token:            256-bit hex token — the session's identity
-    identity:         Who this session belongs to (from auth)
-    started_at:       Monotonic clock at session start
-    last_active:      Monotonic clock at last validated use
-    idle_timeout:     Seconds of inactivity before expiry
-    max_duration:     Maximum session lifetime in seconds (hard cap)
-    terminated:       True if explicitly terminated
-    record_id:        Audit trail ID of the SESSION_START event
+    This record lives only in memory — it is never written to disk.
+    The token_hash is the SHA-256 of the raw token. The raw token
+    exists only as the string returned to the client at creation time.
+
+    Regulatory fields:
+      user_id           — who this session belongs to (GDPR Art. 30)
+      consent_reference — which consent record authorizes this session
+                          (GDPR Art. 7). None for Stage 1 local user.
+      data_classification — highest sensitivity level touched this session.
+                            Used for GDPR Art. 30 records of processing
+                            and CCPA right-to-know compliance.
     """
-    token: str
-    identity: str
-    started_at: float
-    last_active: float
-    idle_timeout: int
-    max_duration: int
-    terminated: bool = False
-    record_id: int = 0
-    rotation_count: int = 0
+    token_hash: str                             # SHA-256 hex of raw token — stored, not the token
+    token_prefix: str                           # First 8 hex chars — for audit log correlation only
+    user_id: str                                # "local" in Stage 1; real identity in Stage 2
+    created_at: float                           # Unix timestamp
+    expires_at: float                           # Absolute expiry Unix timestamp
+    last_used_at: float                         # Updated on each valid use
+    connection_fingerprint_hash: Optional[str]  # SHA-256 of connection identifier (e.g., IP)
+    consent_reference: Optional[str]            # Pointer to consent ledger record (Stage 2+)
+    data_classification: str = "UNCLASSIFIED"   # Escalates as session touches sensitive data
+    rotated_at: Optional[float] = None          # Timestamp of last token rotation
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+@dataclass
+class SessionToken:
+    """
+    What is returned to the caller after a successful session creation
+    or token rotation. This is the ONLY moment the raw token is visible.
+    The caller must store it securely and present it on subsequent requests.
+    """
+    token: str          # The raw bearer token — treat like a password
+    expires_at: float   # When this token expires (Unix timestamp)
+    user_id: str        # Who this session belongs to
+    token_prefix: str   # First 8 hex chars — safe to log for correlation
+
+
+@dataclass
+class SessionValidation:
+    """
+    The result of validating a presented token. This is the swap
+    interface contract — any session module returns this shape.
+
+    valid:     True if the token was accepted.
+    reason:    Why it was rejected (if valid is False).
+    session:   The full session record (if valid is True).
+    new_token: Present only if the token was rotated during validation.
+               The caller must use this token for all subsequent requests.
+    """
+    valid: bool
+    reason: Optional[str] = None
+    session: Optional[SessionRecord] = None
+    new_token: Optional[SessionToken] = None
+
+
+# ---------------------------------------------------------------------------
 # SESSION MANAGER
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
 class SessionManager:
     """
-    Manages active sessions for ONTO.
+    Thread-safe session manager for ONTO.
 
-    Stage 1 design: single-user, in-memory, local only.
-    Starting a new session terminates any existing active session.
-    This enforces the single-session invariant without raising errors.
+    Manages the full session lifecycle: creation, validation, rotation,
+    and termination. All state is in-memory — no session data is written
+    to disk. The audit trail receives lifecycle events but never raw tokens.
 
-    The swap interface contract:
-        start(identity)  → token
-        validate(token)  → Optional[SessionRecord]
-        rotate(token)    → new_token
-        terminate(token) → None
+    This class is intentionally designed with Stage 2 in mind:
+      - user_id and consent_reference are first-class fields now
+      - The lock and concurrent session limit are already in place
+      - The swap interface contract is defined and stable
 
-    Any module satisfying this contract is a valid session module.
+    The singleton instance `session_manager` is imported by the API layer.
     """
 
     def __init__(self) -> None:
+        # The active session store: token_hash -> SessionRecord
+        # In Stage 1 this will never hold more than 1 entry.
+        # In Stage 2, this scales to MAX_CONCURRENT_SESSIONS.
         self._sessions: Dict[str, SessionRecord] = {}
+        self._lock = threading.Lock()
 
-    # ── PUBLIC INTERFACE ─────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # INTERNAL HELPERS
+    # ------------------------------------------------------------------
 
-    def start(
+    def _hash_token(self, token: str) -> str:
+        """
+        Produce the SHA-256 hash of a raw token.
+        This is what we store — never the token itself.
+        """
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def _hash_fingerprint(self, fingerprint: Optional[str]) -> Optional[str]:
+        """
+        Hash a connection fingerprint (e.g., IP address) before storing.
+        We don't need to know the actual IP — just whether this request
+        comes from the same connection as the one that created the session.
+        Hashing prevents the session store from becoming a surveillance log.
+        """
+        if fingerprint is None:
+            return None
+        return hashlib.sha256(fingerprint.encode()).hexdigest()
+
+    def _purge_expired(self, audit_fn: Optional[Callable] = None) -> None:
+        """
+        Remove expired sessions from the store. Called on every operation
+        so the store never silently accumulates dead sessions.
+
+        This is important for GDPR's data minimization principle (Art. 5(1)(c)):
+        data that is no longer needed must not be retained. Session records
+        in memory are personal data — they should not outlive their purpose.
+        """
+        now = time.time()
+        expired = [h for h, s in self._sessions.items() if s.expires_at <= now]
+        for token_hash in expired:
+            session = self._sessions.pop(token_hash)
+            if audit_fn:
+                audit_fn(
+                    event_type="SESSION_EXPIRED",
+                    details={
+                        "token_prefix": session.token_prefix,
+                        "user_id": session.user_id,
+                        "created_at": session.created_at,
+                        "expired_at": now,
+                        "data_classification": session.data_classification,
+                    }
+                )
+
+    # ------------------------------------------------------------------
+    # PUBLIC INTERFACE — THE SWAP CONTRACT
+    # ------------------------------------------------------------------
+
+    def create_session(
         self,
-        identity: str = "operator",
-        idle_timeout: Optional[int] = None,
-        max_duration: Optional[int] = None,
-    ) -> str:
+        user_id: str = "local",
+        connection_fingerprint: Optional[str] = None,
+        consent_reference: Optional[str] = None,
+        audit_fn: Optional[Callable] = None,
+    ) -> SessionToken:
         """
-        Starts a new session for the given identity.
+        Create a new authenticated session and return the raw token.
 
-        Stage 1: terminates any existing active session before starting
-        a new one. One session at a time.
+        If MAX_CONCURRENT_SESSIONS is already reached, the oldest session
+        is superseded (with an audit event) and the new session replaces it.
+        For Stage 1 this means a new login always invalidates the prior one —
+        you cannot have two active sessions on a single-user system.
 
         Args:
-            identity:     Who this session belongs to
-            idle_timeout: Override idle timeout (seconds)
-            max_duration: Override maximum duration (seconds)
+            user_id:               Who this session belongs to.
+                                   Always "local" in Stage 1.
+            connection_fingerprint: A string that uniquely identifies this
+                                   connection (e.g., client IP address).
+                                   Hashed before storage — never stored raw.
+            consent_reference:     Pointer to the consent record that
+                                   authorizes this session. None for Stage 1.
+            audit_fn:              Callable that writes to the audit trail.
+                                   Signature: audit_fn(event_type, details).
 
         Returns:
-            str: The session token (256-bit hex)
+            SessionToken with the raw bearer token. This is the only time
+            the raw token is visible. The caller must store it securely.
         """
-        # Load config values — fall back to defaults if unavailable
-        timeout, max_dur = self._load_timeouts(idle_timeout, max_duration)
+        with self._lock:
+            self._purge_expired(audit_fn)
 
-        # Stage 1: one session at a time — terminate any active session
-        self._terminate_all_silent()
+            # Enforce session limit — supersede oldest if at capacity
+            if len(self._sessions) >= MAX_CONCURRENT_SESSIONS:
+                oldest_hash = min(
+                    self._sessions,
+                    key=lambda h: self._sessions[h].created_at
+                )
+                superseded = self._sessions.pop(oldest_hash)
+                if audit_fn:
+                    audit_fn(
+                        event_type="SESSION_SUPERSEDED",
+                        details={
+                            "token_prefix": superseded.token_prefix,
+                            "user_id": superseded.user_id,
+                            "reason": "new_session_created_at_capacity",
+                        }
+                    )
 
-        # Generate token
-        token = secrets.token_hex(_TOKEN_BYTES)
-        now = time.monotonic()
+            # Generate a cryptographically secure random token
+            raw_token = secrets.token_hex(TOKEN_BYTES)
+            token_hash = self._hash_token(raw_token)
+            token_prefix = token_hash[:8]   # Safe to log — not guessable from prefix alone
 
-        session = SessionRecord(
-            token=token,
-            identity=identity,
-            started_at=now,
-            last_active=now,
-            idle_timeout=timeout,
-            max_duration=max_dur,
-        )
+            now = time.time()
+            expires_at = now + DEFAULT_TTL_SECONDS
 
-        # Record before storing — fail safe
-        record_id = memory.record(
-            event_type="SESSION_START",
-            human_decision=identity,
-            notes=f"Session started. Idle timeout: {timeout}s. "
-                  f"Max duration: {max_dur}s.",
-        )
-        session.record_id = record_id
-        self._sessions[token] = session
+            session = SessionRecord(
+                token_hash=token_hash,
+                token_prefix=token_prefix,
+                user_id=user_id,
+                created_at=now,
+                expires_at=expires_at,
+                last_used_at=now,
+                connection_fingerprint_hash=self._hash_fingerprint(connection_fingerprint),
+                consent_reference=consent_reference,
+            )
+            self._sessions[token_hash] = session
 
-        return token
+            if audit_fn:
+                audit_fn(
+                    event_type="SESSION_START",
+                    details={
+                        "token_prefix": token_prefix,
+                        "user_id": user_id,
+                        "expires_at": expires_at,
+                        "connection_bound": connection_fingerprint is not None,
+                        "consent_reference": consent_reference,
+                        "sliding_ttl": SLIDING_TTL,
+                    }
+                )
 
-    def validate(self, token: str) -> Optional[SessionRecord]:
+            return SessionToken(
+                token=raw_token,
+                expires_at=expires_at,
+                user_id=user_id,
+                token_prefix=token_prefix,
+            )
+
+    def validate_session(
+        self,
+        token: str,
+        connection_fingerprint: Optional[str] = None,
+        rotate: bool = True,
+        audit_fn: Optional[Callable] = None,
+    ) -> SessionValidation:
         """
-        Validates a session token.
+        Validate a presented bearer token and optionally rotate it.
 
-        Checks:
-          - Token exists
-          - Session not terminated
-          - Idle timeout not exceeded
-          - Maximum duration not exceeded
+        Token rotation means: on each successful validation, the old token
+        is retired and a new one is issued. The caller receives the new token
+        in the SessionValidation.new_token field and must use it going forward.
+        This means a stolen token can only be replayed until the legitimate
+        client makes its next request — at which point the stolen copy
+        becomes invalid.
 
-        On success: updates last_active timestamp.
-        On failure: terminates the session and records the reason.
+        Token rotation is a meaningful security improvement with almost no
+        cost in a request/response cycle. It is enabled by default.
 
         Args:
-            token: The session token to validate
+            token:                  The raw bearer token from the client.
+            connection_fingerprint: The connection identifier for this request.
+                                   Must match the one used to create the session
+                                   if ENFORCE_CONNECTION_BINDING is True.
+            rotate:                 Whether to rotate the token on this validation.
+                                   Set to False for read-only operations where
+                                   rotation would be wasteful (e.g., health checks).
+            audit_fn:               Callable for audit trail writes.
 
         Returns:
-            SessionRecord if valid, None otherwise
+            SessionValidation. Check .valid before using .session or .new_token.
         """
-        # Clean up expired sessions before validating
-        self._cleanup_expired()
+        with self._lock:
+            self._purge_expired(audit_fn)
 
-        session = self._sessions.get(token)
-        if session is None:
-            return None
+            token_hash = self._hash_token(token)
+            session = self._sessions.get(token_hash)
 
-        if session.terminated:
-            return None
+            # Token not found — either expired, rotated, or fabricated
+            if session is None:
+                if audit_fn:
+                    audit_fn(
+                        event_type="SESSION_INVALID_TOKEN",
+                        details={
+                            "token_prefix": token_hash[:8],
+                            "reason": "token_not_found",
+                        }
+                    )
+                return SessionValidation(valid=False, reason="invalid_or_expired_token")
 
-        now = time.monotonic()
+            # Connection binding check (T-013 mitigation)
+            if ENFORCE_CONNECTION_BINDING and session.connection_fingerprint_hash is not None:
+                presented_fp_hash = self._hash_fingerprint(connection_fingerprint)
+                if presented_fp_hash != session.connection_fingerprint_hash:
+                    # This is a meaningful security event — log it prominently
+                    if audit_fn:
+                        audit_fn(
+                            event_type="SESSION_BINDING_VIOLATION",
+                            details={
+                                "token_prefix": session.token_prefix,
+                                "user_id": session.user_id,
+                                "reason": "connection_fingerprint_mismatch",
+                            }
+                        )
+                    # Invalidate the session — a binding violation is suspicious
+                    self._sessions.pop(token_hash, None)
+                    return SessionValidation(valid=False, reason="connection_binding_violation")
 
-        # Check idle timeout
-        if (now - session.last_active) > session.idle_timeout:
-            self._expire(token, reason="idle_timeout")
-            return None
+            now = time.time()
 
-        # Check maximum duration
-        if (now - session.started_at) > session.max_duration:
-            self._expire(token, reason="max_duration")
-            return None
+            # Update sliding TTL if enabled
+            if SLIDING_TTL:
+                new_expiry = min(now + DEFAULT_TTL_SECONDS, session.created_at + MAX_LIFETIME_SECONDS)
+                session.expires_at = new_expiry
 
-        # Valid — update last active
-        session.last_active = now
-        return session
+            session.last_used_at = now
 
-    def rotate(self, token: str) -> Optional[str]:
+            # Token rotation
+            if rotate:
+                new_raw_token = secrets.token_hex(TOKEN_BYTES)
+                new_token_hash = self._hash_token(new_raw_token)
+                new_token_prefix = new_token_hash[:8]
+
+                # Migrate session to new token hash
+                self._sessions.pop(token_hash)
+                session.token_hash = new_token_hash
+                session.token_prefix = new_token_prefix
+                session.rotated_at = now
+                self._sessions[new_token_hash] = session
+
+                if audit_fn:
+                    audit_fn(
+                        event_type="SESSION_ROTATED",
+                        details={
+                            "old_token_prefix": token_hash[:8],
+                            "new_token_prefix": new_token_prefix,
+                            "user_id": session.user_id,
+                        }
+                    )
+
+                new_token = SessionToken(
+                    token=new_raw_token,
+                    expires_at=session.expires_at,
+                    user_id=session.user_id,
+                    token_prefix=new_token_prefix,
+                )
+                return SessionValidation(valid=True, session=session, new_token=new_token)
+
+            return SessionValidation(valid=True, session=session, new_token=None)
+
+    def update_data_classification(
+        self,
+        token: str,
+        classification: str,
+        audit_fn: Optional[Callable] = None,
+    ) -> bool:
         """
-        Rotates the session token.
+        Escalate the data classification for this session if the new
+        classification is more sensitive than the current one.
 
-        The old token is immediately invalidated.
-        A new token is issued for the same session.
-        This reduces the replay window for intercepted tokens (T-013).
+        This is called by the intake module whenever a piece of data
+        with a known classification enters the processing loop. The
+        session tracks the highest-sensitivity classification seen —
+        this populates the GDPR Article 30 record of processing activities.
 
-        Args:
-            token: Current valid session token
+        Classification order (least to most sensitive):
+          UNCLASSIFIED -> INTERNAL -> CONFIDENTIAL -> RESTRICTED -> SENSITIVE
 
-        Returns:
-            New token string, or None if the session is invalid
+        Returns True if the classification was updated, False if the
+        presented classification was not more sensitive than the current one.
         """
-        session = self.validate(token)
-        if session is None:
-            return None
+        sensitivity_order = {
+            "UNCLASSIFIED": 0,
+            "INTERNAL": 1,
+            "CONFIDENTIAL": 2,
+            "RESTRICTED": 3,
+            "SENSITIVE": 4,
+        }
 
-        # Issue new token
-        new_token = secrets.token_hex(_TOKEN_BYTES)
-        now = time.monotonic()
+        with self._lock:
+            token_hash = self._hash_token(token)
+            session = self._sessions.get(token_hash)
+            if session is None:
+                return False
 
-        new_session = SessionRecord(
-            token=new_token,
-            identity=session.identity,
-            started_at=session.started_at,    # preserve original start time
-            last_active=now,
-            idle_timeout=session.idle_timeout,
-            max_duration=session.max_duration,
-            record_id=session.record_id,
-            rotation_count=session.rotation_count + 1,
-        )
+            current_level = sensitivity_order.get(session.data_classification, 0)
+            new_level = sensitivity_order.get(classification, 0)
 
-        # Remove old, add new
-        del self._sessions[token]
-        self._sessions[new_token] = new_session
-
-        memory.record(
-            event_type="SESSION_ROTATE",
-            human_decision=session.identity,
-            notes=f"Token rotated. Rotation #{new_session.rotation_count}. "
-                  f"Old token invalidated.",
-        )
-
-        return new_token
-
-    def terminate(self, token: str) -> bool:
-        """
-        Explicitly terminates a session.
-
-        The token is immediately invalidated.
-        The termination is recorded in the audit trail.
-
-        Args:
-            token: Session token to terminate
-
-        Returns:
-            True if the session existed and was terminated, False otherwise
-        """
-        session = self._sessions.get(token)
-        if session is None or session.terminated:
+            if new_level > current_level:
+                old_classification = session.data_classification
+                session.data_classification = classification
+                if audit_fn:
+                    audit_fn(
+                        event_type="SESSION_CLASSIFICATION_ESCALATED",
+                        details={
+                            "token_prefix": session.token_prefix,
+                            "user_id": session.user_id,
+                            "from": old_classification,
+                            "to": classification,
+                        }
+                    )
+                return True
             return False
 
-        session.terminated = True
-        duration = round(time.monotonic() - session.started_at, 1)
-
-        memory.record(
-            event_type="SESSION_END",
-            human_decision=session.identity,
-            notes=f"Session terminated by operator. "
-                  f"Duration: {duration}s. "
-                  f"Rotations: {session.rotation_count}.",
-        )
-
-        del self._sessions[token]
-        return True
-
-    def active_session(self) -> Optional[SessionRecord]:
-        """
-        Returns the current active session, or None if no valid session exists.
-        Validates and updates last_active on the returned session.
-        """
-        for token in list(self._sessions.keys()):
-            session = self.validate(token)
-            if session is not None:
-                return session
-        return None
-
-    def is_active(self) -> bool:
-        """True if there is a currently valid active session."""
-        return self.active_session() is not None
-
-    # ── INTERNAL ─────────────────────────────────────────────────────────────
-
-    def _expire(self, token: str, reason: str) -> None:
-        """Marks a session as expired and records it."""
-        session = self._sessions.get(token)
-        if session is None:
-            return
-
-        session.terminated = True
-        duration = round(time.monotonic() - session.started_at, 1)
-
-        memory.record(
-            event_type="SESSION_EXPIRED",
-            human_decision=session.identity,
-            notes=f"Session expired: {reason}. Duration: {duration}s.",
-        )
-
-        del self._sessions[token]
-
-    def _terminate_all_silent(self) -> int:
-        """
-        Terminates all active sessions without raising errors.
-        Used internally before starting a new session (Stage 1 invariant).
-        Returns the count of sessions terminated.
-        """
-        count = 0
-        for token in list(self._sessions.keys()):
-            session = self._sessions.get(token)
-            if session and not session.terminated:
-                session.terminated = True
-                duration = round(time.monotonic() - session.started_at, 1)
-                memory.record(
-                    event_type="SESSION_END",
-                    human_decision=session.identity,
-                    notes=f"Session terminated — new session started. "
-                          f"Duration: {duration}s.",
-                )
-                count += 1
-        self._sessions.clear()
-        return count
-
-    def _cleanup_expired(self) -> None:
-        """Removes sessions that have exceeded their timeouts."""
-        now = time.monotonic()
-        to_expire = []
-
-        for token, session in self._sessions.items():
-            if session.terminated:
-                to_expire.append((token, "terminated"))
-            elif (now - session.last_active) > session.idle_timeout:
-                to_expire.append((token, "idle_timeout"))
-            elif (now - session.started_at) > session.max_duration:
-                to_expire.append((token, "max_duration"))
-
-        for token, reason in to_expire:
-            if reason == "terminated":
-                del self._sessions[token]
-            else:
-                self._expire(token, reason)
-
-    def _load_timeouts(
+    def end_session(
         self,
-        idle_override: Optional[int],
-        max_override: Optional[int],
-    ) -> tuple:
-        """Loads timeout values from config, falling back to defaults."""
-        try:
-            from core.config import config
-            idle = idle_override or config.SESSION_IDLE_TIMEOUT_SECONDS
-            max_dur = max_override or config.SESSION_MAX_DURATION_SECONDS
-        except (ImportError, AttributeError):
-            idle = idle_override or _DEFAULT_IDLE_TIMEOUT
-            max_dur = max_override or _DEFAULT_MAX_DURATION
-        return idle, max_dur
+        token: str,
+        audit_fn: Optional[Callable] = None,
+    ) -> bool:
+        """
+        Explicitly terminate a session. This is the clean logout path.
+
+        Under GDPR's data minimization principle (Art. 5(1)(c)), processing
+        should stop as soon as the purpose is achieved. Explicit session
+        termination ensures we are not holding an active session longer
+        than the user intends. The session record is removed from memory
+        immediately — there is no grace period.
+
+        Returns True if a session was found and ended, False if no session
+        matched the token (it may have already expired).
+        """
+        with self._lock:
+            token_hash = self._hash_token(token)
+            session = self._sessions.pop(token_hash, None)
+
+            if session is None:
+                return False
+
+            now = time.time()
+            if audit_fn:
+                audit_fn(
+                    event_type="SESSION_END",
+                    details={
+                        "token_prefix": session.token_prefix,
+                        "user_id": session.user_id,
+                        "duration_seconds": round(now - session.created_at, 2),
+                        "data_classification": session.data_classification,
+                        "consent_reference": session.consent_reference,
+                    }
+                )
+            return True
+
+    def active_session_count(self) -> int:
+        """
+        Return the number of currently active (non-expired) sessions.
+        Primarily useful for health checks and monitoring.
+        """
+        with self._lock:
+            now = time.time()
+            return sum(1 for s in self._sessions.values() if s.expires_at > now)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SHARED INSTANCE
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# MODULE-LEVEL SINGLETON
+# ---------------------------------------------------------------------------
 
-# Single shared instance — import this everywhere
+# Import this instance everywhere in the codebase. Do not instantiate
+# SessionManager directly — use this shared instance to ensure all
+# operations share the same state and lock.
 session_manager = SessionManager()
