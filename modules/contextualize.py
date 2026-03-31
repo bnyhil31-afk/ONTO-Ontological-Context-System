@@ -22,11 +22,11 @@ Rule 1.09A: Code, tests, and documentation must always agree.
 
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules import memory
+from modules import memory  # noqa: E402
 
 try:
     from modules import graph as _graph_module
@@ -61,7 +61,6 @@ def load_from_memory() -> int:
     try:
         records = memory.read_all()
         for record in records:
-            context = record.get("context") or {}
             text = record.get("notes") or ""
             if text:
                 _field.append({
@@ -92,8 +91,6 @@ def build(package: Dict[str, Any]) -> Dict[str, Any]:
 
     No synthetic data is introduced. Every edge traces to this input.
     """
-    global _field
-
     text = package.get("clean") or package.get("raw") or ""
 
     # Step 1: RELATE — add this input to the graph
