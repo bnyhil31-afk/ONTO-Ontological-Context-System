@@ -402,7 +402,14 @@ def verify_chain() -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _connect() -> sqlite3.Connection:
-    """Returns a connection to the memory database."""
+    """
+    Returns a connection to the memory database.
+    Ensures the parent directory exists before connecting — this allows
+    _connect() to be called safely even if initialize() has not yet run,
+    which can happen in test environments that patch DB_PATH directly.
+    """
+    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
