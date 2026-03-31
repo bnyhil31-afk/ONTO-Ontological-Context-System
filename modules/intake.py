@@ -358,8 +358,10 @@ def _sanitize(text: str) -> tuple:
     # Normalize Unicode (NFC form)
     clean = unicodedata.normalize("NFC", clean)
 
-    # Normalize whitespace
+    # Normalize whitespace — collapse multiple spaces/tabs
     clean = re.sub(r"[ \t]+", " ", clean).strip()
+    # Collapse multiple consecutive newlines to maximum two
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
 
     # Enforce length limit
     max_length = MAX_INPUT_LENGTH
@@ -399,12 +401,17 @@ def _assess_complexity(text: str, word_count: int) -> str:
 def _classify_input_type(text: str) -> str:
     """
     Classifies the type of input.
-    Returns: question | statement | command | empty
+    Returns: question | statement | request | number | unknown
     """
-    if not text:
-        return "empty"
+    if not text or not text.strip():
+        return "unknown"
 
     stripped = text.strip()
+
+    # Pure numeric input
+    if re.match(r"^[\d\s\.,\-\+\(\)\/\%]+$", stripped):
+        return "number"
+
     if stripped.endswith("?"):
         return "question"
     elif any(stripped.lower().startswith(w) for w in [
