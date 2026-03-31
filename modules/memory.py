@@ -126,6 +126,21 @@ def initialize() -> bool:
             ON events(classification)
         """)
 
+        # Schema migration — add new columns if upgrading from older schema
+        # This is safe to run on any existing database
+        new_columns = [
+            ("chain_hash", "TEXT"),
+            ("signature_algorithm", "TEXT DEFAULT 'Ed25519'"),
+            ("classification", "INTEGER DEFAULT 0"),
+        ]
+        for col_name, col_def in new_columns:
+            try:
+                conn.execute(
+                    f"ALTER TABLE events ADD COLUMN {col_name} {col_def}"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists — this is expected on fresh DBs
+
     return True
 
 
