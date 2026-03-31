@@ -7,6 +7,7 @@ Plain English guide. No assumptions. No jargon.
 ## What the tests do
 
 They check that every part of ONTO works correctly.
+
 If all tests pass — the system is behaving as intended.
 If any test fails — something needs attention before shipping.
 
@@ -15,7 +16,7 @@ If any test fails — something needs attention before shipping.
 ## What success looks like
 
 ```
-108 passed, 0 failed, 0 errors
+188 passed, 0 failed, 0 errors
 ```
 
 If you see anything different — something needs attention.
@@ -57,8 +58,9 @@ ERROR    — something unexpected happened
 ```
 
 At the end you will see a summary:
+
 ```
-108 passed in 5.8s
+188 passed in X.Xs
 ```
 
 ---
@@ -102,14 +104,16 @@ If it fails — fix it before running anything else.
 If you cannot install pytest, use Python's built-in test runner:
 
 ```bash
-python3 -m unittest tests.test_onto -v
+python3 -m unittest discover tests/ -v
 ```
 
 Results will look slightly different but test the same things.
 
 ---
 
-## What each test class covers
+## What each test file and class covers
+
+### tests/test_onto.py — Core system (108 tests)
 
 Class             | Tests | What it covers
 ------------------|-------|-----------------------------------------------
@@ -122,6 +126,48 @@ TestSurface       |  11   | Honest plain language output
 TestFullLoop      |   8   | All five steps working together end to end
 TestSanitization  |  14   | Input sanitization — dangerous character handling
 TestEdgeCases     |  12   | Unusual but real situations the system may encounter
+
+### tests/test_conformance.py — Crossover contract (16 tests)
+
+Class              | Tests | What it covers
+-------------------|-------|-----------------------------------------------
+TestRelate         |   4   | RELATE function — input ingestion and classification
+TestNavigate       |   4   | NAVIGATE function — context traversal and uncertainty
+TestGovern         |   4   | GOVERN function — human sovereignty checkpoint
+TestRemember       |   4   | REMEMBER function — permanent audit trail
+
+### tests/test_security.py — Security hardening (28 tests)
+
+Class                       | Tests | What it covers
+----------------------------|-------|-----------------------------------------------
+TestRateLimiter             |   8   | Sliding window rate limiting
+TestPrinciplesHashProtection|   8   | principles.hash tamper detection
+TestEnvironmentConfig       |  12   | Environment variable configuration safety
+
+### tests/test_memory_chain.py — Merkle chain and audit integrity (19 tests)
+
+Class                   | Tests | What it covers
+------------------------|-------|-----------------------------------------------
+TestMerkleChain         |  11   | Cryptographic chain linking, tamper detection
+TestReadLogging         |   6   | READ_ACCESS events for sensitive data reads
+TestSignatureAlgorithm  |   2   | Signature algorithm field stored correctly
+
+### tests/test_classification_and_config.py — Classification and safe messaging (16 tests)
+
+Class                  | Tests | What it covers
+-----------------------|-------|-----------------------------------------------
+TestDataClassification |  11   | Sensitivity classification at intake (levels 0–3)
+TestSafeMessagingConfig|   5   | Crisis response text and automation bias warning
+
+### tests/test_session.py — Session management (17 tests)
+
+Class                  | Tests | What it covers
+-----------------------|-------|-----------------------------------------------
+TestSessionStart       |   4   | Token generation, uniqueness, single-session invariant
+TestSessionValidation  |   5   | Valid/invalid/expired token handling
+TestSessionRotation    |   3   | Token rotation — old token immediately invalid
+TestSessionTermination |   3   | Explicit termination behavior
+TestSessionAuditTrail  |   2   | Session events recorded permanently
 
 ---
 
