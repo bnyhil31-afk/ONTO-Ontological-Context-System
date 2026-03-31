@@ -196,9 +196,18 @@ def receive(raw_input: str) -> Dict[str, Any]:
     input_type = _classify_input_type(clean)
 
     # Step 5 — Record and return
+    # Store context dict so downstream modules can read sanitization state
     record_id = memory.record(
         event_type="INTAKE",
         input_data=clean[:500] if clean else None,
+        context={
+            "sanitized": was_sanitized,
+            "truncated": was_truncated,
+            "input_type": input_type,
+            "complexity": complexity,
+            "classification": classification,
+            "word_count": word_count,
+        },
         notes=f"source:human | complexity:{complexity} | type:{input_type}",
         classification=classification
     )
@@ -449,14 +458,15 @@ def _classify_input_type(text: str) -> str:
     ):
         return "question"
 
-    # Command/action phrases
-    command_starters = (
-        "please", "can you", "could you", "would you",
-        "help me", "tell me", "show me", "explain",
-        "find", "get", "make", "create", "delete", "update",
-        "run", "start", "stop", "open", "close"
-    )
-    if any(lower.startswith(w) for w in command_starters):
+    # Command verbs — check the first word of the input
+    command_verbs = {
+        "please", "explain", "find", "get", "make", "create",
+        "delete", "update", "run", "start", "stop", "open",
+        "close", "show", "tell", "help", "give", "list", "add",
+        "remove", "print", "display", "search", "check", "set",
+    }
+    first_word = lower.split()[0] if lower.split() else ""
+    if first_word in command_verbs:
         return "command"
 
     # Default — general text
