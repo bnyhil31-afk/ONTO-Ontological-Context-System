@@ -191,7 +191,7 @@ def _build_simple_display(
         lines.append(f"Confident — strong match with prior context.")
     elif confidence_val >= 0.4:
         lines.append(f"Moderate confidence.")
-    elif confidence_val >= 0.1:
+    elif confidence_val >= 0.09:
         lines.append("Low confidence — limited prior context. Human judgment recommended.")
     else:
         lines.append("Confidence: none — new territory.")
@@ -423,7 +423,8 @@ def _compute_confidence(
     When graph data exists: modulate by source diversity and confidence level.
     """
     context = enriched.get("context") or {}
-    distance = context.get("distance", enriched.get("distance", 1.0))
+    # Top-level distance (set explicitly by callers) takes priority over context["distance"]
+    distance = enriched.get("distance", context.get("distance", 1.0))
     base = max(0.0, min(1.0, 1.0 - distance))
 
     # Only apply level adjustment when we actually have graph-backed context
