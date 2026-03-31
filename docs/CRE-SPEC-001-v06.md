@@ -9,8 +9,8 @@
 **Crossover Contract:** CROSSOVER_CONTRACT_v1.0  
 **Contract Hash:** `8ff5fbf86f77a46f0c56b2b520b1a7273c82805ff2cb9bd93c133a534558452d`  
 **Contract Location:** `docs/CROSSOVER_CONTRACT_v1.0.md`  
-**Repository:** https://github.com/bnyhil31-afk/Hello-World  
-**Related:** ONTO MVP — https://github.com/bnyhil31-afk/Hello-World  
+**Repository:** https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System  
+**Related:** ONTO MVP — https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System  
 
 ---
 
@@ -1240,5 +1240,5 @@ Every gap found and honestly named in this process made the foundation stronger.
 *End of CRE-SPEC-001 v0.6*
 
 *This specification is released under the MIT License.*  
-*Repository: https://github.com/bnyhil31-afk/Hello-World*  
+*Repository: https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System*  
 *Built by: Neo*
