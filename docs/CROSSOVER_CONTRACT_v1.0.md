@@ -5,7 +5,7 @@
 **Authors:** Neo (bnyhil31-afk), Claude (Anthropic)  
 **License:** MIT  
 **Related documents:**  
-- ONTO MVP: https://github.com/bnyhil31-afk/Hello-World  
+- ONTO MVP: https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System  
 - ONTO Principles Hash: `b1d3054f646c5f3abaffd3a275683949aef426d135cf823e7b3665fb06a03ba5`  
 - CRE Specification: CRE-SPEC-001 v0.5  
 
