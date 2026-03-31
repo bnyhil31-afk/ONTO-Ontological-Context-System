@@ -33,7 +33,7 @@ Rule 1.09A: Code, tests, and documentation must always agree.
 
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -109,34 +109,32 @@ def _present_safety(
     Human wellbeing is the highest priority. Everything else waits.
     """
     level = safety.get("level", "UNKNOWN")
-    message = safety.get("message", "")
-    text = enriched_package.get("clean") or enriched_package.get("raw") or ""
 
     if level == "CRISIS":
         display = (
-            f"I want to make sure you're okay.\n\n"
-            f"If you're in crisis or thinking about hurting yourself, "
-            f"please reach out to a crisis line:\n\n"
-            f"  • 988 Suicide & Crisis Lifeline: call or text 988\n"
-            f"  • Crisis Text Line: text HOME to 741741\n"
-            f"  • International: https://www.befrienders.org\n\n"
-            f"You don't have to be alone in this."
+            "I want to make sure you're okay.\n\n"
+            "If you're in crisis or thinking about hurting yourself, "
+            "please reach out to a crisis line:\n\n"
+            "  \u2022 988 Suicide & Crisis Lifeline: call or text 988\n"
+            "  \u2022 Crisis Text Line: text HOME to 741741\n"
+            "  \u2022 International: https://www.befrienders.org\n\n"
+            "You don't have to be alone in this."
         )
     elif level == "HARM":
         display = (
-            f"This input contains signals related to harm. "
-            f"Before proceeding, I want to flag this for human review.\n\n"
-            f"If someone is in immediate danger, please contact emergency services."
+            "This input contains signals related to harm. "
+            "Before proceeding, I want to flag this for human review.\n\n"
+            "If someone is in immediate danger, please contact emergency services."
         )
     elif level == "INTEGRITY":
         display = (
-            f"This input appears to ask the system to act against its principles. "
-            f"The principles are sealed and cannot be overridden. "
-            f"Everything is recorded."
+            "This input appears to ask the system to act against its principles. "
+            "The principles are sealed and cannot be overridden. "
+            "Everything is recorded."
         )
     else:
         display = (
-            f"Safety flag detected. Human review required before proceeding.\n"
+            "Safety flag detected. Human review required before proceeding.\n"
             f"Flag type: {level}"
         )
 
@@ -171,10 +169,7 @@ def _build_simple_display(
     text = enriched.get("clean") or enriched.get("raw") or ""
     context = enriched.get("context") or {}
     related_count = context.get("related_count", 0)
-    summary = context.get("summary", "")
     novelty = examination.get("novelty", "first_seen")
-    confidence_profile = examination.get("confidence_profile") or {}
-    level = confidence_profile.get("level", "none")
 
     lines = [f"Input received: {text}"]
 
@@ -188,9 +183,9 @@ def _build_simple_display(
     # Confidence — honest, calibrated language
     confidence_val = _compute_confidence(enriched, examination)
     if confidence_val >= 0.7:
-        lines.append(f"Confident — strong match with prior context.")
+        lines.append("Confident — strong match with prior context.")
     elif confidence_val >= 0.4:
-        lines.append(f"Moderate confidence.")
+        lines.append("Moderate confidence.")
     elif confidence_val > 0.0:
         lines.append(
             "Low confidence — limited prior context."
@@ -334,7 +329,7 @@ def _build_complex_display(
     # Novelty
     novelty_labels = {
         "first_seen": "First encounter — no pattern established.",
-        "emerging":   "Emerging pattern — observed in a few inputs.",
+        "emerging": "Emerging pattern — observed in a few inputs.",
         "established": "Established pattern — recurring across multiple inputs.",
     }
     lines.append(f"Pattern: {novelty_labels.get(novelty, novelty)}")
@@ -352,7 +347,7 @@ def _build_complex_display(
         lines.append(
             f"\n  ⚠ Diversity note: {total_obs} observations, "
             f"but only {source_count} distinct source(s). "
-            f"Repetition does not increase reliability."
+            "Repetition does not increase reliability."
         )
 
     lines.append("")
@@ -380,10 +375,10 @@ def _build_complex_display(
 
     # Consistency
     consistency_labels = {
-        "aligned":     "Consistent with prior context.",
+        "aligned": "Consistent with prior context.",
         "contradicted": "Conflicts with prior context (see above).",
-        "new":         "No prior context to compare against.",
-        "unknown":     "Consistency unknown.",
+        "new": "No prior context to compare against.",
+        "unknown": "Consistency unknown.",
     }
     lines.append(f"Consistency: {consistency_labels.get(consistency, consistency)}")
 
