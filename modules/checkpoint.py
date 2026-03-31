@@ -48,7 +48,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
          text before any other content. The human's response is still
          recorded. The system never auto-responds to crisis signals.
 
-    U4 — Displays automation bias warning at every non-safety checkpoint.
+    U4 — Displays automation bias warning at every substantive checkpoint.
          EU AI Act Article 14(4)(b): users must be helped to remain aware
          of the tendency to over-rely on AI outputs.
 
@@ -142,7 +142,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
             notes="Routine input — checkpoint skipped. Auto-proceeded.",
             classification=enriched_package.get("classification", 0)
         )
-        print(f"\n  [AUTO] Routine input. Proceeding.")
+        print("\n  [AUTO] Routine input. Proceeding.")
         return {
             "decision": "AUTO_PROCEED",
             "action": "PROCEED",
@@ -201,7 +201,7 @@ def _ask_human(
     if options:
         option_str = " | ".join(options)
         print(f"  Options: {option_str}")
-        print(f"  (Press Enter to veto / take no action)\n")
+        print("  (Press Enter to veto / take no action)\n")
 
     try:
         response = input("  > ").strip().lower()
