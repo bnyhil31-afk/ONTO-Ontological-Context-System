@@ -717,4 +717,4 @@ Until those three conditions are met, this document is a draft under active revi
 
 *End of CROSSOVER-CONTRACT-001 v1.0*
 
-*This document was produced through a collaborative design process between Neo and Claude, grounded in neuroscience, philosophy of mind, ecology, information theory, regulatory compliance, and adversarial systems design. It is released under the MIT License.*
+*This document was produced through a collaborative design process between Neo and Claude, grounded in neuroscience, philosophy of mind, ecology, information theory, regulatory compliance, and adversarial systems design. It is released under the GNU Lesser General Public License v2.1 (LGPL-2.1).*
