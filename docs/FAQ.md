@@ -1,349 +1,407 @@
-# Frequently Asked Questions
+# ONTO — Frequently Asked Questions
 
-**Project:** ONTO — Ontological Context System
-
----
-
-## General
-
-**What is ONTO?**
-
-ONTO is a system that helps you make sense of information by building
-context around it. You give it any input — a question, a statement, a
-problem. It places that input in the context of everything it has seen
-before, tells you what it sees and how certain it is, and then asks
-you what to do next.
-
-Everything it does is recorded permanently. Anyone can check it.
+Plain English. No jargon. Every question is a valid question.
 
 ---
 
-**Do I need technical knowledge to use it?**
+## The Basics
 
-No. If you can run a terminal and type, you can use ONTO.
-The setup guides walk through every step for Windows, Mac, Linux,
-and Raspberry Pi.
+### What is ONTO?
 
----
+ONTO is a system that helps you make sense of information in context.
 
-**Does it need the internet?**
+You give it any input — a question, a statement, a problem. It places
+that input in the context of everything it has previously encountered,
+tells you what it sees and how confident it is, and then asks you what
+to do next. Everything it does is recorded permanently and can be verified
+by anyone.
 
-No. ONTO runs entirely on your device. No data ever leaves your machine
-unless you choose to move it. It works offline completely.
+It is built on 13 principles that cannot be changed. If they are ever
+tampered with, the system refuses to run.
 
----
+### Who is ONTO for?
 
-**Is it free?**
+Anyone. ONTO runs on a Raspberry Pi, a laptop, or a server. It does not
+require an account, a subscription, or internet access. It is designed to
+be deployed by individuals, small organisations, researchers, and anyone
+who wants a contextual reasoning tool they fully control.
 
-Yes. MIT license. Free to use, free to modify, free to distribute.
-Forever.
+### Is ONTO an AI chatbot?
 
----
+Not exactly. ONTO is a contextual reasoning system. It does not generate
+text from a language model. It surfaces examined context — what it has
+seen before that relates to your input — and presents that to you with
+a confidence score. You decide what to do with it. The system never
+decides for you.
 
-**Who built this?**
+### Is ONTO free?
 
-Neo (@bnyhil31-afk). It is open source — anyone can contribute.
+Yes. ONTO is released under the MIT licence. You can use it, modify it,
+and deploy it for any purpose. See `LICENSE` in the repository.
 
 ---
 
 ## Installation
 
-**What do I need to install?**
+### What do I need to install ONTO?
 
-Python 3.7 or higher. That is all. ONTO has no required external
-dependencies beyond Python's standard library.
+Python 3.9 or higher. That is all. No database server, no cloud account,
+no special hardware.
 
----
+For the API server, you also need:
 
-**It says Python is not found. What do I do?**
-
-On Linux or Raspberry Pi:
 ```bash
-sudo apt install python3
+pip install -r requirements-test.txt
 ```
 
-On Mac, download from https://www.python.org/downloads/
+### How do I install ONTO?
 
-On Windows, see `docs/Setup_Windows.md`.
-
----
-
-**setup.sh failed. What do I do?**
-
-Try:
 ```bash
-chmod +x setup.sh
+git clone https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System.git
+cd ONTO-Ontological-Context-System
 bash setup.sh
 ```
 
-If it still fails, open an issue with the error message. All questions
-are welcome.
+On Windows, use WSL (Windows Subsystem for Linux) and follow the same steps.
+
+### How do I run ONTO as a command-line tool?
+
+```bash
+python3 main.py
+```
+
+Type any input. Press Enter. Follow the prompts.
+
+### How do I run ONTO as an API server?
+
+```bash
+uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+Then visit `http://127.0.0.1:8000/docs` for the interactive API
+documentation. Every endpoint is documented there with examples.
+
+### Does ONTO work on a Raspberry Pi?
+
+Yes. ONTO was designed with the Raspberry Pi as the reference hardware
+target. It runs on a Pi 3 or later with Python 3.9+. The Argon2id key
+derivation is tuned for Pi-class hardware (approx. 200-400ms per
+derivation — acceptable for an interactive system).
+
+### Does ONTO work on Windows?
+
+Via WSL (Windows Subsystem for Linux). Native Windows support is on the
+roadmap. If you test native Windows support, please open an issue with
+your findings — your experience directly improves the documentation.
 
 ---
 
-**Can I run it on a Raspberry Pi Zero?**
+## The Principles
 
-Yes, but the original Pi Zero W (single-core, 512MB) is slow.
-The Pi Zero 2W (quad-core) works well. The Pi 3, 4, and 5 are all
-fully supported. See `docs/Setup_RaspberryPi.md` for details.
+### What are the 13 principles?
 
----
+They are the invariant foundation of the system. They are in
+`principles.txt` in the project root. They are short and written in plain
+language. Read them before anything else.
 
-## Principles and Trust
+They cover: life first, efficiency, truth, freedom, harmony, epistemic
+humility, memory, integrity, context, provenance, scale, ecology, and
+accountability.
 
-**What are the 13 principles?**
+### Can the principles be changed?
 
-They are in `principles.txt` in the repository root. They are short
-and written in plain language. Read them.
+The 13 principles in `principles.txt` are sealed with a SHA-256 hash.
+If the file is changed in any way — even one character — the system
+detects the mismatch and refuses to start. The hash is published publicly
+so anyone can verify it independently.
 
-They cover: purpose, life first, freedom, truth, do no harm, openness,
-memory, integrity, humility, growth, dignity, consent, and accountability.
+The governance process for values changes requires a written proposal,
+a 90-day public comment period, and a two-thirds supermajority. See
+`GOVERNANCE.md` for the full process.
 
----
+### How do I verify the principles haven't been tampered with?
 
-**Can the principles be changed?**
-
-No. They are sealed with a cryptographic hash. If anyone changes
-`principles.txt`, the system detects it and refuses to run.
-
-The hash is published at:
-https://gist.github.com/bnyhil31-afk/6436e717a619b9a4d685f5b8709a53c8
-
-Anyone can verify the principles have not changed:
 ```bash
 sha256sum principles.txt
 ```
 
----
-
-**How do I verify the principles are intact?**
-
-```bash
-python3 -m core.verify
-```
-
-Or manually:
-```bash
-sha256sum principles.txt
-```
-
-Compare the output to the hash in the README. If they match — the
-principles are intact. If they do not — something is wrong.
-
----
-
-**Can I trust a fork of ONTO?**
-
-Only if the fork:
-- Keeps the 13 principles intact and verified
-- Does not remove the human sovereignty checkpoint
-- Does not remove the audit trail
-- Does not remove the bias monitor or consent mechanisms
-
-A fork that removes these components is not ONTO, regardless of what
-it calls itself. See `GOVERNANCE.md` for the full fork policy.
-
----
-
-## Data and Privacy
-
-**Where is my data stored?**
-
-In `data/memory.db` on your device. Nowhere else.
-It is a standard SQLite file. You can open it with any SQLite viewer.
-
----
-
-**Can I delete my data?**
-
-The audit trail is append-only — records cannot be deleted. This is by
-design: the permanence of the record is what makes it trustworthy.
-
-If you want to start fresh, you can delete the `data/memory.db` file
-and the system will create a new one on next run. The history will be
-gone.
-
-For deployments that need a formal right-to-erasure process (GDPR),
-see the compliance documentation in `docs/` and the legal section of
-the CRE specification.
-
----
-
-**Does the system send my data anywhere?**
-
-No. ONTO has no network functionality in Stage 1. Nothing leaves
-your device. No telemetry, no analytics, no cloud sync.
-
----
-
-**What classification levels mean:**
-
-| Level | Label | Examples |
-|---|---|---|
-| 0 | public | General questions, casual conversation |
-| 1 | internal | Organizational information |
-| 2 | personal | Your name, email, phone, address |
-| 3 | sensitive | Health, financial, legal information |
-| 4 | privileged | Attorney-client, clinical, clergy communications |
-| 5 | critical | Existential risk if exposed — set explicitly |
-
-Classification is auto-detected at intake and can only increase,
-never decrease.
-
----
-
-**What happens when it detects a crisis signal?**
-
-The system stops immediately. It displays crisis resources before
-anything else happens. The human operator at the checkpoint must
-review the input before any other action is taken.
-
-The crisis response is designed to connect people with support —
-not to diagnose or assess. Detection is indicative, not comprehensive.
-Human judgment at the checkpoint is essential.
-
-Crisis resources displayed by default:
-- 988 Suicide & Crisis Lifeline (US): call or text 988
-- Crisis Text Line: text HOME to 741741
-- International: findahelpline.com
-
-This cannot be turned off. It can be localized — see `core/config.py`.
+Compare the output to the published hash in the repository README and
+in the public Gist. If they match — the principles are intact.
 
 ---
 
 ## The Audit Trail
 
-**What is the audit trail?**
+### What is the audit trail?
 
-Everything ONTO does is recorded in `data/memory.db`. Every input,
-every decision, every session start and end. The record is permanent
-and tamper-evident.
+Every action the system takes is recorded permanently in a SQLite
+database (`data/memory.db`). Records cannot be deleted or modified —
+the database has triggers that prevent it. Every record stores the
+SHA-256 hash of the previous record, creating a cryptographic chain.
+Any gap or tampering is mathematically detectable.
 
----
+### Can I read the audit trail?
 
-**How do I read the audit trail?**
+Yes. Via the API:
 
-```bash
-python3 -c "
-import sys; sys.path.insert(0,'.')
-from modules import memory
-memory.initialize()
-memory.print_readable(memory.read_all())
-"
+```
+GET /audit
+GET /audit?event_type=CHECKPOINT
+GET /audit?event_type=SESSION_START
 ```
 
-Or open `data/memory.db` with any SQLite viewer.
-DB Browser for SQLite (https://sqlitebrowser.org/) is free and works well.
+Or directly:
 
----
-
-**What is the Merkle chain?**
-
-Every record in the audit trail stores a SHA-256 hash of the record
-before it. This creates a cryptographic chain — if any record is
-deleted or modified, the chain breaks and the gap is detectable.
-
-To verify the chain is intact:
 ```python
 from modules import memory
-memory.initialize()
-result = memory.verify_chain()
-print(result["intact"])   # True if unbroken
-print(result["total"])    # Total records checked
+records = memory.read_all()
 ```
 
+### Can I delete records from the audit trail?
+
+No. That is intentional. The audit trail is append-only by design and
+by cryptographic structure. Attempting to delete a record raises a
+database error. Attempting to modify a record raises a database error.
+
+This is Principle VII: Memory. Everything the system does is written
+down permanently. Anyone can read it. No one can erase it.
+
+### How do I verify the audit trail hasn't been tampered with?
+
+```python
+from modules import memory
+result = memory.verify_chain()
+print(result["intact"])   # True if the chain is unbroken
+print(result["total"])    # Total records checked
+print(result["gaps"])     # Empty list if intact
+```
+
+A broken chain does not necessarily mean tampering — it can also mean
+a record was written incorrectly due to a system crash. Either way,
+it tells you something happened that deserves attention.
+
 ---
 
-**Can records be deleted or modified?**
+## The Checkpoint
 
-No. The database enforces this with triggers. Any attempt to delete
-or modify a record raises an error. This is tested in the test suite.
+### What is the checkpoint?
+
+The checkpoint is where the system stops and asks you what to do.
+
+Before any consequential decision is committed to memory, the system
+presents you with what it sees — the examined context, the confidence
+level, and any safety signals — and asks for your decision:
+
+- **Proceed** — continue and commit to the audit trail
+- **Veto** — stop; the veto is recorded permanently
+- **Flag** — mark for follow-up review
+- **Defer** — postpone this decision
+
+The veto is a first-class outcome, not a failure state. A human
+exercising their right to say no is the system working correctly.
+
+### Can I turn off the checkpoint?
+
+For routine inputs below the significance threshold, the checkpoint
+is skipped automatically (AUTO_PROCEED). For inputs above the
+threshold — high weight, low confidence, or any safety signal — the
+checkpoint always runs. This cannot be disabled. It is Principle III:
+Freedom. You are always asked. You always choose.
+
+### What happens at the API checkpoint?
+
+When the API returns `status: pending_checkpoint`, the examined context
+is in the `display` field. Present it to the human, collect their
+decision, and re-submit with `human_decision: "proceed"` (or veto,
+flag, defer). The decision is then committed to the permanent audit trail.
 
 ---
 
-## Sessions
+## Safety
 
-**What is a session?**
+### What is a CRISIS response?
 
-A session tracks your interaction with the system from login to logout.
-Sessions expire after 30 minutes of inactivity (configurable) and
-have a maximum lifetime of 8 hours (configurable).
+If ONTO detects signals associated with a mental health crisis — direct
+or indirect expressions of suicidal ideation, hopelessness, or self-harm
+— it enters CRISIS mode. This means:
+
+1. Safe messaging text is displayed immediately, following AFSP/SAMHSA/WHO
+   guidelines, including crisis support contact information
+2. The event is committed permanently to the audit trail regardless of
+   what happens next
+3. The system never auto-processes or auto-responds to CRISIS signals
+4. The human at the checkpoint always sees and decides
+
+This is Principle I: Life First. Human wellbeing is the highest priority
+of this system. No configuration option changes this.
+
+### What are HARM and INTEGRITY signals?
+
+- **HARM** — input that appears designed to cause harm to a person or
+  group. Triggers a safety checkpoint.
+- **INTEGRITY** — input that appears designed to subvert the system's
+  principles, disable safety checks, or inject instructions. Triggers
+  a safety checkpoint.
+
+All three signal types (CRISIS, HARM, INTEGRITY) are tested on every
+CI run and cannot be silently disabled.
+
+### What if a real person in crisis uses this system?
+
+The CRISIS response text includes real crisis support resources. The
+checkpoint records the event and the human's response permanently.
+The system surfaces what it detects — the human operator decides how
+to respond.
+
+If you are deploying ONTO in any context where real people may interact
+with it, read the safe messaging guidelines followed by ONTO's CRISIS
+response and ensure your deployment context has appropriate human
+oversight. The system is designed to support human decision-making,
+not replace it.
 
 ---
 
-**What happens when a session expires?**
+## Authentication and Sessions
 
-The session is recorded as expired in the audit trail. You will need
-to start a new session. Data is never lost — only the session token
-is invalidated.
+### Do I need a passphrase to use ONTO?
+
+For the API, yes — authentication is required. Run the passphrase setup
+once during initialisation, then authenticate via `POST /auth` to receive
+a session token.
+
+For the command-line tool, authentication is configurable. Set
+`ONTO_AUTH_REQUIRED=true` in your environment to require a passphrase
+at boot.
+
+### How long does a session last?
+
+Sessions expire after 1 hour of inactivity by default. The maximum
+session lifetime is 8 hours regardless of activity. Both values are
+configurable via environment variables:
+
+```
+ONTO_SESSION_TTL_SECONDS=3600
+ONTO_SESSION_MAX_LIFETIME_SECONDS=28800
+```
+
+### What is token rotation?
+
+Every API request that requires authentication returns a new session
+token in the `X-Session-Token` response header. The previous token is
+immediately invalid. This limits the damage from any intercepted token —
+it can only be replayed until the legitimate client makes their next
+request. This is T-013 mitigation from the threat model.
 
 ---
 
 ## Configuration
 
-**How do I change settings?**
+### How do I configure ONTO?
 
-Copy `.env.example` to `.env` and edit the values. Or set environment
-variables before running:
+All configuration is through environment variables. Copy `.env.example`
+to `.env` and edit the values. The `.env` file is never committed to
+version control.
 
-```bash
-ONTO_RATE_LIMIT_PER_MINUTE=30 python3 main.py
+Key variables:
+
+```
+ONTO_SESSION_TTL_SECONDS        Session idle timeout (default: 3600)
+ONTO_RATE_LIMIT_PER_MINUTE      Rate limit (default: 60, 0 = disabled)
+ONTO_ENVIRONMENT                development | staging | production
+ONTO_MAX_INPUT_LENGTH           Maximum input length (default: 10000)
 ```
 
-See `core/config.py` or `docs/API.md` for a full list of settings.
+### How do I run ONTO in production?
+
+Before any production deployment:
+
+1. Enable full-disk encryption on the device (essential on Pi)
+2. Set `ONTO_ENVIRONMENT=production` in your environment
+3. Run behind a reverse proxy (nginx, caddy) with TLS
+4. Set rate limits appropriate for your expected usage
+5. Enable GitHub branch protection and signed commits
+6. Run a third-party security audit (checklist item 2.04)
+
+ONTO Stage 1 is designed for single-device, single-user local deployment.
+Multi-user and networked deployment is Stage 2.
 
 ---
 
-**How do I set a passphrase?**
+## Data and Privacy
 
-Generate the hash of your passphrase:
-```bash
-python3 -c "import hashlib; print(hashlib.sha256(b'your-passphrase-here').hexdigest())"
-```
+### Where is my data stored?
 
-Set the environment variable:
-```bash
-ONTO_AUTH_PASSPHRASE_HASH=<hash> python3 main.py
-```
+All data is stored locally in `data/memory.db` on the device running
+ONTO. Nothing is sent anywhere. No telemetry. No analytics. No cloud.
 
-Or add it to your `.env` file. Never put the passphrase itself in `.env`
-— only the hash.
+### What data does ONTO store?
+
+Every input and every decision is stored permanently in the audit trail.
+This is intentional — the audit trail is the system's memory and its
+integrity mechanism. Do not enter sensitive personal data into ONTO until
+the database encryption (item 2.01) is configured and enabled.
+
+### Can I delete my data?
+
+The audit trail is append-only by design. Records cannot be deleted.
+This is a fundamental architectural commitment — the audit trail's
+integrity depends on it.
+
+If you need to start fresh, delete `data/memory.db` entirely (and its
+WAL sidecar files). The system will create a new empty database on next
+run. Note that this permanently destroys all previous audit records.
+
+The GDPR right to erasure is resolved through cryptographic erasure in
+Stage 1+ — the encryption key is destroyed, making records permanently
+unreadable without deleting them. See `docs/ROADMAP_001.txt` for the
+full compliance architecture.
 
 ---
 
-## Contributing
+## Development
 
-**How do I contribute?**
+### How do I run the tests?
 
-Read `CONTRIBUTING.md`. Read the 13 principles. Open an issue before
+```bash
+pip install -r requirements-test.txt
+pytest tests/ -v
+```
+
+Expected result: 195 passed.
+
+### How do I contribute?
+
+Read `CONTRIBUTING.md`. Read the principles first. Open an issue before
 starting significant work.
 
-All contributions are welcome. The principles bind contributors
-before anyone else.
+### Where is the API documentation?
+
+Run the server (`uvicorn api.main:app`) and visit:
+- `http://127.0.0.1:8000/docs` — Swagger UI, interactive
+- `http://127.0.0.1:8000/redoc` — ReDoc, readable
+
+### Where can I learn more about the architecture?
+
+- `principles.txt` — the foundation
+- `docs/CROSSOVER_CONTRACT_v1.0.md` — shared contract with CRE
+- `docs/CRE-SPEC-001-v06.md` — the CRE protocol specification
+- `docs/ROADMAP_001.txt` — where this is going
+- `docs/THREAT_MODEL_001.txt` — every known threat and its mitigation
+- `GOVERNANCE.md` — how decisions are made
 
 ---
 
-**Can I use ONTO in a commercial product?**
+## Getting Help
 
-Yes. MIT license. No restrictions. We ask — but do not require — that
-commercial users contribute improvements back to the project.
+Open an issue on GitHub. All questions are welcome. Every question
+is a contribution to making the project more understandable.
 
----
-
-**I found a security vulnerability. What do I do?**
-
-Do not open a public issue. Use GitHub's private security advisory
-feature to contact the maintainer. See `GOVERNANCE.md` for the full
-responsible disclosure process.
+If you have found a security vulnerability, do not open a public issue.
+Use GitHub's private security advisory feature. See `GOVERNANCE.md`
+for the responsible disclosure process.
 
 ---
 
-**I have a question that is not answered here.**
-
-Open an issue. All questions are welcome. Every question is a
-contribution to making the project more understandable.
-
----
-
-*This document will be updated as the project evolves.*  
-*If something here is wrong or unclear, open an issue.*
+*This FAQ is part of the permanent record of ONTO.*
+*It is updated as the project evolves.*
+*If a question is missing — open an issue and it will be added.*
