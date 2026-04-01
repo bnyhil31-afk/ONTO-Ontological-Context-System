@@ -8,30 +8,26 @@ Design decisions (all from THREAT_MODEL_001, REVIEW_001, and CRE-SPEC-001):
 
   TOKEN SECURITY
   - Session token is 32 bytes (256-bit) of cryptographic randomness.
-  - _sessions is keyed by the raw token string. Token lives in memory
-    only -- never logged, persisted, or included in audit records.
-    Only the 8-char hash prefix (token_prefix) appears in audit events.
-
-  SESSION TOKEN AS STRING
-  - SessionToken inherits from str. Passes isinstance(token, str), works
-    with int(token, 16), len(token), set/dict membership, all str ops.
-    Extra attributes: .expires_at, .identity, .token_prefix, .token.
+  - _sessions is keyed by the raw token string. The raw token is also
+    stored in SessionRecord so that active_session().token can be passed
+    directly to terminate() without requiring callers to track the token
+    variable separately.
+  - token_prefix (sha256[:8]) is used in audit records — never the raw token.
 
   SESSIONRECORD TIME MODEL
   - created_at / started_at: when the session was established.
   - last_used_at / last_active: when the session was last validated.
-  - max_duration: the hard ceiling in seconds (stored, not derived).
-  - expires_at: computed as created_at + max_duration. Winding back
-    started_at (= created_at) therefore winds back expires_at too,
-    allowing tests to simulate time passage without sleeping.
-  - idle_timeout: seconds of inactivity before expiry (checked against
-    last_used_at). Winding back last_active triggers idle expiry.
+  - max_duration: hard ceiling stored explicitly so expires_at is computed
+    as created_at + max_duration. Winding back started_at therefore winds
+    back expires_at, letting tests simulate time passage by arithmetic.
 
-  AUDIT TRAIL
-  - self._audit_log: always-on internal list, appended on every event.
-  - self._audit_fn: registered observer via set_audit_fn().
-  - Adaptive dispatch: tries fn(event_type, details), falls back to
-    fn(event_type) on TypeError -- supports 1- or 2-arg callables.
+  AUDIT TRAIL — TWO LAYERS
+  - memory.record(): writes SESSION_START / SESSION_END events to ONTO's
+    permanent SQLite audit trail. This is the primary audit destination,
+    readable via memory.read_by_type().
+  - self._audit_log: always-on in-memory list for diagnostics and testing
+    without database access.
+  - set_audit_fn(): optional observer callable, adaptive 1- or 2-arg dispatch.
 
   REGULATORY FORWARD-COMPATIBILITY
   - identity: "local" in Stage 1; real user identity in Stage 2.
@@ -55,17 +51,13 @@ Public interface (stable):
   active_session_count()              -> int
   reset()                             -> None
 
-SessionRecord attributes (all read/write):
-  .identity            .token_prefix       .data_classification
-  .created_at          .started_at         (alias for created_at, settable)
-  .last_used_at        .last_active        (alias for last_used_at, settable)
-  .expires_at                              (computed: created_at + max_duration)
-  .max_duration        .idle_timeout       .consent_reference
-
-Verbose aliases:
-  create_session(**kw) -> start(**kw)
-  validate_session(**kw) -> validate(**kw)
-  end_session(**kw) -> terminate(**kw)
+SessionRecord key attributes:
+  .token          the raw bearer token (use for terminate())
+  .token_prefix   sha256[:8], safe to log
+  .identity       who this session belongs to
+  .started_at     alias for created_at (settable — winds back expires_at)
+  .last_active    alias for last_used_at (settable — triggers idle expiry)
+  .expires_at     computed: created_at + max_duration
 """
 
 import hashlib
@@ -76,11 +68,20 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
+# Memory module — ONTO's permanent SQLite audit trail.
+# Imported gracefully so session.py can be tested without a live database.
+try:
+    from modules import memory as _memory_module
+    _MEMORY_AVAILABLE = True
+except ImportError:
+    _memory_module = None
+    _MEMORY_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # CONSTANTS
 # ---------------------------------------------------------------------------
 
-TOKEN_BYTES = 32
+TOKEN_BYTES = 32  # 256 bits of entropy
 
 DEFAULT_TTL_SECONDS = int(os.environ.get("ONTO_SESSION_TTL_SECONDS", "3600"))
 MAX_LIFETIME_SECONDS = int(os.environ.get("ONTO_SESSION_MAX_LIFETIME_SECONDS", "28800"))
@@ -99,20 +100,23 @@ MAX_CONCURRENT_SESSIONS = int(os.environ.get("ONTO_MAX_SESSIONS", "1"))
 @dataclass
 class SessionRecord:
     """
-    Internal representation of an active session. Never written to disk.
+    Internal representation of an active session.
 
-    Time model:
-      created_at + max_duration = expires_at (computed, not stored)
-      Winding back started_at (= created_at) winds back expires_at too.
-      Winding back last_active (= last_used_at) triggers idle expiry.
-      This lets tests simulate time passage by subtraction, no sleep needed.
+    .token          — raw bearer token. Pass to terminate() directly.
+                      Example: sm.terminate(sm.active_session().token)
+    .token_prefix   — sha256[:8] of raw token, safe to log.
+    .started_at     — settable alias for created_at. Winding back this value
+                      also winds back expires_at (= created_at + max_duration).
+    .last_active    — settable alias for last_used_at. Winding back triggers
+                      idle expiry without sleeping.
 
     Regulatory fields:
-      identity          -- who this session belongs to (GDPR Art. 30)
-      consent_reference -- which consent record authorizes it (GDPR Art. 7)
-      data_classification -- highest sensitivity touched (GDPR Art. 30)
+      identity          — GDPR Art. 30 (records of processing)
+      consent_reference — GDPR Art. 7 (conditions for consent), Stage 2+
+      data_classification — GDPR Art. 30 sensitivity ceiling for this session
     """
-    token_prefix: str
+    raw_token: str                              # raw bearer token — stored for .token access
+    token_prefix: str                           # sha256(raw_token)[:8] — safe to log
     identity: str
     created_at: float
     last_used_at: float
@@ -124,6 +128,19 @@ class SessionRecord:
     rotated_at: Optional[float] = None
 
     # ------------------------------------------------------------------
+    # PRIMARY TOKEN ACCESSOR
+    # ------------------------------------------------------------------
+
+    @property
+    def token(self) -> str:
+        """
+        The raw bearer token for this session.
+        Use this to call terminate() on the result of active_session():
+            sm.terminate(sm.active_session().token)
+        """
+        return self.raw_token
+
+    # ------------------------------------------------------------------
     # COMPUTED EXPIRY
     # ------------------------------------------------------------------
 
@@ -133,33 +150,26 @@ class SessionRecord:
         return self.created_at + self.max_duration
 
     # ------------------------------------------------------------------
-    # READ/WRITE FIELD ALIASES
+    # READ/WRITE ALIASES
     # ------------------------------------------------------------------
 
     @property
     def started_at(self) -> float:
-        """Alias for created_at. When the session was established."""
+        """Alias for created_at. Settable — adjusting this winds back expires_at."""
         return self.created_at
 
     @started_at.setter
     def started_at(self, value: float) -> None:
-        """Write-through to created_at. Winding back expires_at automatically."""
         self.created_at = value
 
     @property
     def last_active(self) -> float:
-        """Alias for last_used_at. When the session was last validated."""
+        """Alias for last_used_at. Settable — adjusting this triggers idle expiry."""
         return self.last_used_at
 
     @last_active.setter
     def last_active(self, value: float) -> None:
-        """Write-through to last_used_at. Winding back triggers idle expiry."""
         self.last_used_at = value
-
-    @property
-    def token(self) -> str:
-        """Stable string handle. Returns token_prefix (safe to log)."""
-        return self.token_prefix
 
     # ------------------------------------------------------------------
     # EXPIRY CHECKS
@@ -179,9 +189,9 @@ class SessionToken(str):
     """
     Bearer token returned after session creation or rotation.
 
-    Inherits from str -- isinstance(token, str) is True, int(token, 16),
+    Inherits from str — isinstance(token, str) is True, int(token, 16),
     len(token), set/dict membership all work natively.
-    The string value IS the raw bearer token.
+    The string value IS the raw 64-character hex bearer token.
 
     Extra attributes: .expires_at, .identity, .token_prefix, .token
     """
@@ -215,24 +225,29 @@ class SessionManager:
     """
     Thread-safe session manager for ONTO.
 
-    _sessions keyed by raw token string -- allows _sessions[token] directly.
-    Audit observers receive (event_type, details) or (event_type,) adaptively.
+    Audit events are written to two destinations:
+      1. ONTO's permanent SQLite audit trail via memory.record()
+      2. self._audit_log (in-memory list for diagnostics)
+    An optional observer can be registered via set_audit_fn().
     """
 
     def __init__(self) -> None:
         self._sessions: Dict[str, SessionRecord] = {}
         self._audit_log: List[dict] = []
         self._audit_fn: Optional[Callable] = None
+        self._last_token: Optional[str] = None  # raw token of most recent start()
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
-    # AUDIT
+    # AUDIT OBSERVER
     # ------------------------------------------------------------------
 
     def set_audit_fn(self, fn: Optional[Callable]) -> None:
         """
-        Register an audit observer. Called as fn(event_type, details) or
-        fn(event_type) -- both signatures supported. None to deregister.
+        Register an audit observer. Supported signatures:
+          fn(event_type: str, details: dict)
+          fn(event_type: str)
+        Set to None to deregister.
         """
         with self._lock:
             self._audit_fn = fn
@@ -256,20 +271,42 @@ class SessionManager:
         details: dict,
         audit_fn: Optional[Callable] = None,
     ) -> None:
-        """Append to _audit_log and dispatch to all observers."""
+        """
+        Record an audit event to all destinations:
+          - self._audit_log (always)
+          - memory.record() if available (permanent SQLite trail)
+          - registered set_audit_fn() observer if set
+          - per-call audit_fn if provided
+        """
         entry = {"event_type": event_type, "timestamp": time.time(), **details}
         self._audit_log.append(entry)
+
+        # Write to ONTO's permanent SQLite audit trail
+        if _MEMORY_AVAILABLE and _memory_module is not None:
+            try:
+                _memory_module.record(
+                    event_type=event_type,
+                    human_decision=details.get("identity"),
+                    notes=str({k: v for k, v in details.items() if k != "identity"}),
+                )
+            except Exception:
+                pass  # database unavailable — in-memory log is the fallback
+
+        # Registered observer
         if self._audit_fn is not None:
             self._call_fn(self._audit_fn, event_type, details)
+
+        # Per-call observer (only if different)
         if audit_fn is not None and audit_fn is not self._audit_fn:
             self._call_fn(audit_fn, event_type, details)
 
     # ------------------------------------------------------------------
-    # INTERNAL
+    # INTERNAL HELPERS
     # ------------------------------------------------------------------
 
     @staticmethod
     def _prefix(raw_token: str) -> str:
+        """First 8 hex chars of sha256(raw_token). Safe to log."""
         return hashlib.sha256(str(raw_token).encode()).hexdigest()[:8]
 
     def _hash_fingerprint(self, fp: Optional[str]) -> Optional[str]:
@@ -281,6 +318,8 @@ class SessionManager:
         expired = [t for t, s in self._sessions.items() if s.is_expired()]
         for raw_token in expired:
             session = self._sessions.pop(raw_token)
+            if raw_token == self._last_token:
+                self._last_token = None
             self._dispatch(
                 "SESSION_EXPIRED",
                 {
@@ -299,19 +338,27 @@ class SessionManager:
         session: SessionRecord,
         audit_fn: Optional[Callable] = None,
     ) -> "SessionToken":
+        """Internal rotation — must be called with lock held."""
         new_raw = secrets.token_hex(TOKEN_BYTES)
         new_prefix = self._prefix(new_raw)
         old_prefix = session.token_prefix
+
         del self._sessions[old_raw]
+        session.raw_token = new_raw
         session.token_prefix = new_prefix
         session.rotated_at = time.time()
         self._sessions[new_raw] = session
+
+        if old_raw == self._last_token:
+            self._last_token = new_raw
+
         self._dispatch(
             "SESSION_ROTATED",
             {"old_token_prefix": old_prefix, "new_token_prefix": new_prefix,
              "identity": session.identity},
             audit_fn,
         )
+
         return SessionToken(
             token=new_raw,
             expires_at=session.expires_at,
@@ -332,7 +379,10 @@ class SessionManager:
         consent_reference: Optional[str] = None,
         audit_fn: Optional[Callable] = None,
     ) -> "SessionToken":
-        """Create a new session. Returns SessionToken (is a str)."""
+        """
+        Create a new session. Returns SessionToken (is a str).
+        Stage 1: supersedes any existing session (MAX_CONCURRENT_SESSIONS=1).
+        """
         _idle = idle_timeout if idle_timeout is not None else float(DEFAULT_TTL_SECONDS)
         _max = max_duration if max_duration is not None else float(MAX_LIFETIME_SECONDS)
 
@@ -342,6 +392,8 @@ class SessionManager:
             if len(self._sessions) >= MAX_CONCURRENT_SESSIONS:
                 oldest = min(self._sessions, key=lambda t: self._sessions[t].created_at)
                 sup = self._sessions.pop(oldest)
+                if oldest == self._last_token:
+                    self._last_token = None
                 self._dispatch(
                     "SESSION_SUPERSEDED",
                     {"token_prefix": sup.token_prefix, "identity": sup.identity,
@@ -354,6 +406,7 @@ class SessionManager:
             now = time.time()
 
             session = SessionRecord(
+                raw_token=raw,
                 token_prefix=prefix,
                 identity=identity,
                 created_at=now,
@@ -364,6 +417,7 @@ class SessionManager:
                 consent_reference=consent_reference,
             )
             self._sessions[raw] = session
+            self._last_token = raw
 
             self._dispatch(
                 "SESSION_START",
@@ -391,7 +445,7 @@ class SessionManager:
         connection_fingerprint: Optional[str] = None,
         audit_fn: Optional[Callable] = None,
     ) -> Optional[SessionRecord]:
-        """Validate token. Returns SessionRecord if valid, None otherwise."""
+        """Validate a token. Returns SessionRecord if valid, None otherwise."""
         with self._lock:
             self._purge_expired(audit_fn)
             raw = str(token)
@@ -414,6 +468,8 @@ class SessionManager:
                         audit_fn,
                     )
                     del self._sessions[raw]
+                    if raw == self._last_token:
+                        self._last_token = None
                     return None
 
             session.last_used_at = time.time()
@@ -438,12 +494,19 @@ class SessionManager:
         token: str,
         audit_fn: Optional[Callable] = None,
     ) -> bool:
-        """End a session. Returns True if found and ended, False otherwise."""
+        """
+        End a session. Returns True if found and ended, False otherwise.
+
+        Accepts the raw bearer token OR the value of SessionRecord.token:
+            sm.terminate(sm.active_session().token)  # works correctly
+        """
         with self._lock:
             raw = str(token)
             session = self._sessions.pop(raw, None)
             if session is None:
                 return False
+            if raw == self._last_token:
+                self._last_token = None
             self._dispatch(
                 "SESSION_END",
                 {
@@ -458,12 +521,26 @@ class SessionManager:
             return True
 
     def is_active(self) -> bool:
-        """True if any non-expired session currently exists."""
+        """
+        True if the most recently started session is still active.
+
+        Checks only the session created by the last start() call on this
+        instance. Provides deterministic single-user semantics and avoids
+        false positives from sessions started in other contexts.
+        """
         with self._lock:
-            return any(not s.is_expired() for s in self._sessions.values())
+            if self._last_token is None:
+                return False
+            session = self._sessions.get(self._last_token)
+            return session is not None and not session.is_expired()
 
     def active_session(self) -> Optional[SessionRecord]:
-        """Active SessionRecord if one exists, None otherwise."""
+        """
+        Return the active SessionRecord if one exists, None otherwise.
+
+        The returned record's .token gives the raw bearer token:
+            sm.terminate(sm.active_session().token)
+        """
         with self._lock:
             for s in self._sessions.values():
                 if not s.is_expired():
@@ -471,7 +548,6 @@ class SessionManager:
             return None
 
     def active_session_count(self) -> int:
-        """Number of currently active (non-expired) sessions."""
         with self._lock:
             return sum(1 for s in self._sessions.values() if not s.is_expired())
 
@@ -485,8 +561,7 @@ class SessionManager:
         order = {"UNCLASSIFIED": 0, "INTERNAL": 1, "CONFIDENTIAL": 2,
                  "RESTRICTED": 3, "SENSITIVE": 4}
         with self._lock:
-            raw = str(token)
-            session = self._sessions.get(raw)
+            session = self._sessions.get(str(token))
             if session is None:
                 return False
             if order.get(classification, 0) > order.get(session.data_classification, 0):
@@ -506,10 +581,11 @@ class SessionManager:
             self._audit_log.clear()
 
     def reset(self) -> None:
-        """Clear all sessions and audit log. For test setUp(). Preserves audit_fn."""
+        """Clear sessions and audit log. For test setUp(). Preserves audit_fn."""
         with self._lock:
             self._sessions.clear()
             self._audit_log.clear()
+            self._last_token = None
 
     # ------------------------------------------------------------------
     # VERBOSE ALIASES
