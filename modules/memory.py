@@ -345,6 +345,256 @@ def print_readable(records: List[Dict[str, Any]]) -> None:
         print(f"  Sig:   {r.get('signature_algorithm', 'unknown')}")
         print("  " + "─" * 48)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# QUERY — COMPOSABLE FILTERED READ
+# ─────────────────────────────────────────────────────────────────────────────
+
+def query(
+    event_type: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    classification_min: int = 0,
+    identity: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    order: str = "desc",
+) -> Dict[str, Any]:
+    """
+    Composable filtered query across the audit trail.
+
+    All parameters are optional and combinable. Any subset of filters
+    may be applied in a single call. This is the primary read interface
+    for reporting, compliance, and audit purposes.
+
+    Args:
+        event_type:         Filter to a specific event type string.
+                            Exact match. Examples: "CHECKPOINT", "SESSION_START".
+        since:              ISO 8601 timestamp. Return records at or after
+                            this time. Example: "2026-01-01T00:00:00+00:00"
+        until:              ISO 8601 timestamp. Return records at or before
+                            this time. Example: "2026-12-31T23:59:59+00:00"
+        classification_min: Minimum classification level (inclusive).
+                            0 = all records. 2 = personal data and above.
+                            3 = sensitive/special categories and above.
+        identity:           Filter by human_decision identity field.
+                            Partial match (LIKE %identity%). Used to find
+                            all records associated with a specific operator.
+        search:             Full-text search across `input` and `notes` fields.
+                            Partial match (LIKE %search%). Case-insensitive
+                            in SQLite default collation.
+                            Privacy note: search results may contain personal
+                            data. The caller is responsible for ensuring the
+                            query is authorized. In Stage 2 this parameter
+                            will be enforced against the caller's authorization
+                            level based on classification_min.
+        limit:              Maximum records to return. Hard ceiling: 500.
+                            Default: 50.
+        offset:             Number of records to skip. Use with limit for
+                            pagination. Default: 0.
+        order:              Sort order. "desc" = newest first (default).
+                            "asc" = oldest first.
+
+    Returns:
+        Dict with keys:
+          records (list):  The matching records.
+          total   (int):   Total matching records (before limit/offset).
+                           Use this to compute page counts.
+          limit   (int):   The limit applied.
+          offset  (int):   The offset applied.
+          filters (dict):  The filters that were applied, for audit purposes.
+
+    Privacy note:
+        Every call to query() with classification_min >= READ_LOG_THRESHOLD
+        generates a READ_ACCESS event in the audit trail. Reads of sensitive
+        data are as visible as writes (U3, crossover contract §8.3).
+    """
+    limit = min(max(1, limit), 500)
+    offset = max(0, offset)
+    order_sql = "ASC" if order.lower() == "asc" else "DESC"
+
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if event_type:
+        conditions.append("event_type = ?")
+        params.append(event_type)
+
+    if since:
+        conditions.append("timestamp >= ?")
+        params.append(since)
+
+    if until:
+        conditions.append("timestamp <= ?")
+        params.append(until)
+
+    if classification_min > 0:
+        conditions.append("classification >= ?")
+        params.append(classification_min)
+
+    if identity:
+        conditions.append("human_decision LIKE ?")
+        params.append(f"%{identity}%")
+
+    if search:
+        conditions.append("(input LIKE ? OR notes LIKE ?)")
+        params.append(f"%{search}%")
+        params.append(f"%{search}%")
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    select_cols = """
+        id, timestamp, event_type, input, context,
+        output, confidence, human_decision, notes,
+        chain_hash, signature_algorithm, classification
+    """
+
+    count_sql = f"SELECT COUNT(*) FROM events {where_clause}"
+    data_sql = f"""
+        SELECT {select_cols}
+        FROM events
+        {where_clause}
+        ORDER BY id {order_sql}
+        LIMIT ? OFFSET ?
+    """
+
+    with _connect() as conn:
+        # Total count (before pagination) for the caller to compute pages
+        total = conn.execute(count_sql, params).fetchone()[0]
+
+        # Paginated data
+        rows = conn.execute(data_sql, params + [limit, offset]).fetchall()
+        records = [_row_to_dict(row) for row in rows]
+
+    # U3 — log this read if it touches sensitive data
+    if classification_min >= READ_LOG_THRESHOLD or (
+        not classification_min and any(
+            r.get("classification", 0) >= READ_LOG_THRESHOLD
+            for r in records
+        )
+    ):
+        log_read_access(
+            record_id=0,
+            accessor_id="api",
+            purpose=f"query: type={event_type} search={search} "
+                    f"identity={identity} class>={classification_min}",
+            classification=max(
+                (r.get("classification", 0) for r in records), default=0
+            )
+        )
+
+    filters_applied = {
+        "event_type": event_type,
+        "since": since,
+        "until": until,
+        "classification_min": classification_min,
+        "identity": identity,
+        "search": bool(search),  # boolean — don't log the search term itself
+        "order": order,
+    }
+
+    return {
+        "records": records,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "filters": filters_applied,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUMMARIZE — AGGREGATE STATISTICS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def summarize() -> Dict[str, Any]:
+    """
+    Returns aggregate statistics across the entire audit trail.
+
+    Produces a compliance-ready summary suitable for dashboards,
+    health checks, and regulatory reporting. Does not return any
+    record content — only counts, timestamps, and distributions.
+
+    Returns:
+        Dict with keys:
+          total_records      (int):   Total events in the audit trail.
+          by_event_type      (dict):  Count per event_type.
+          by_classification  (dict):  Count per classification level.
+          earliest_timestamp (str):   Timestamp of the first record.
+          latest_timestamp   (str):   Timestamp of the most recent record.
+          chain_intact       (bool):  Result of verify_chain().
+          chain_total        (int):   Total records verified in chain.
+          chain_gaps         (int):   Number of chain gaps detected.
+
+    This function never logs a READ_ACCESS event — it returns only
+    aggregate statistics, not record content.
+    """
+    with _connect() as conn:
+        # Total records
+        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+
+        if total == 0:
+            return {
+                "total_records": 0,
+                "by_event_type": {},
+                "by_classification": {},
+                "earliest_timestamp": None,
+                "latest_timestamp": None,
+                "chain_intact": True,
+                "chain_total": 0,
+                "chain_gaps": 0,
+            }
+
+        # Count by event type
+        type_rows = conn.execute("""
+            SELECT event_type, COUNT(*) as cnt
+            FROM events
+            GROUP BY event_type
+            ORDER BY cnt DESC
+        """).fetchall()
+        by_event_type = {row[0]: row[1] for row in type_rows}
+
+        # Count by classification level
+        class_rows = conn.execute("""
+            SELECT classification, COUNT(*) as cnt
+            FROM events
+            GROUP BY classification
+            ORDER BY classification ASC
+        """).fetchall()
+        # Map integer levels to human-readable labels
+        level_labels = {
+            0: "UNCLASSIFIED",
+            1: "INTERNAL",
+            2: "PERSONAL",
+            3: "SENSITIVE",
+            4: "RESTRICTED",
+            5: "HIGHEST",
+        }
+        by_classification = {
+            level_labels.get(row[0], str(row[0])): row[1]
+            for row in class_rows
+        }
+
+        # Timestamp range
+        earliest = conn.execute(
+            "SELECT timestamp FROM events ORDER BY id ASC LIMIT 1"
+        ).fetchone()[0]
+        latest = conn.execute(
+            "SELECT timestamp FROM events ORDER BY id DESC LIMIT 1"
+        ).fetchone()[0]
+
+    # Chain integrity — verify the full chain
+    chain = verify_chain()
+
+    return {
+        "total_records": total,
+        "by_event_type": by_event_type,
+        "by_classification": by_classification,
+        "earliest_timestamp": earliest,
+        "latest_timestamp": latest,
+        "chain_intact": chain["intact"],
+        "chain_total": chain["total"],
+        "chain_gaps": len(chain["gaps"]),
+    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHAIN VERIFICATION (C2)
