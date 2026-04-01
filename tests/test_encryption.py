@@ -12,13 +12,12 @@ Covers:
   - Different salt file = different key (per-installation isolation)
   - clear_key() removes key from memory (T-016 cold boot mitigation)
   - Salt file created on first initialize()
-  - libraries_required check (graceful error if missing)
 
 Threats mitigated (from THREAT_MODEL_001):
   T-004 — Database file size oracle (padding)
   T-016 — Cold boot key recovery (key cleared at session end)
 
-Expected: 8 passed.
+Expected: 8 passed (or 8 skipped if cryptography/argon2-cffi not installed).
 """
 
 import os
@@ -29,7 +28,25 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ---------------------------------------------------------------------------
+# DEPENDENCY GUARD
+# Both cryptography and argon2-cffi are required for encryption tests.
+# If either is absent, all tests are skipped with a clear message rather
+# than failing with a confusing RuntimeError from _require_libraries().
+# ---------------------------------------------------------------------------
 
+try:
+    import cryptography   # noqa: F401
+    import argon2         # noqa: F401
+    ENCRYPTION_LIBS_AVAILABLE = True
+except ImportError:
+    ENCRYPTION_LIBS_AVAILABLE = False
+
+
+@unittest.skipIf(
+    not ENCRYPTION_LIBS_AVAILABLE,
+    "cryptography or argon2-cffi not installed — run: pip install cryptography argon2-cffi"
+)
 class TestEncryptionLayer(unittest.TestCase):
     """
     Tests for core/encryption.py — AES-256-GCM with Argon2id key derivation.
@@ -158,9 +175,7 @@ class TestEncryptionLayer(unittest.TestCase):
         cross-installation attacks — a key valid on one device is not valid
         on another.
         If this fails: The per-installation salt is not being used.
-        T-016 related: predictable keys are easier to attack.
         """
-        # Second database in a separate directory (separate salt file)
         dir2 = tempfile.mkdtemp()
         db_path2 = os.path.join(dir2, "memory.db")
 
