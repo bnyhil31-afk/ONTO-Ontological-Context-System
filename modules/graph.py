@@ -247,9 +247,12 @@ def initialize() -> None:
 
             # Migration: add new columns to existing databases safely
             for stmt in (
-                "ALTER TABLE graph_nodes ADD COLUMN inputs_seen INTEGER NOT NULL DEFAULT 1",
-                "ALTER TABLE graph_nodes ADD COLUMN is_sensitive INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE graph_edges ADD COLUMN is_sensitive INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE graph_nodes ADD COLUMN"
+                " inputs_seen INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE graph_nodes ADD COLUMN"
+                " is_sensitive INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE graph_edges ADD COLUMN"
+                " is_sensitive INTEGER NOT NULL DEFAULT 0",
             ):
                 try:
                     conn.execute(stmt)
