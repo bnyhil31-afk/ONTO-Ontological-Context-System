@@ -25,6 +25,28 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-test.txt
+      - name: Verify cryptographic libraries installed
+        run: |
+          python -c "
+          import sys
+          missing = []
+          try:
+              import cryptography
+              print(f'[OK] cryptography {cryptography.__version__}')
+          except ImportError:
+              missing.append('cryptography')
+              print('[MISSING] cryptography')
+          try:
+              import argon2
+              print(f'[OK] argon2-cffi installed')
+          except ImportError:
+              missing.append('argon2-cffi')
+              print('[MISSING] argon2-cffi')
+          if missing:
+              print(f'FATAL: required packages not installed: {missing}')
+              sys.exit(1)
+          print('All cryptographic libraries available.')
+          "
       - name: Normalize line endings on principles.txt
         run: |
           python3 -c "
