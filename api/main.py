@@ -253,10 +253,170 @@ class ProcessResponse(BaseModel):
     )
 
 
-class AuditResponse(BaseModel):
+# ─────────────────────────────────────────────────────────────────────────────
+# AUDIT RESPONSE MODELS
+# Replace the existing AuditResponse model in api/main.py with these.
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+class AuditQueryResponse(BaseModel):
     records: List[dict]
-    count: int
-    filtered_by: Optional[str] = None
+    total: int = Field(..., description="Total matching records before pagination")
+    limit: int
+    offset: int
+    filters: dict = Field(..., description="Filters applied — for audit of the audit")
+    page: int = Field(..., description="Current page (1-based)")
+    pages: int = Field(..., description="Total pages at this limit")
+ 
+ 
+class AuditChainResponse(BaseModel):
+    intact: bool = Field(
+        ...,
+        description="True if every record correctly links to its predecessor"
+    )
+    total: int = Field(..., description="Total records verified")
+    gaps: int = Field(..., description="Number of chain breaks detected")
+    gap_detail: List[dict] = Field(
+        default_factory=list,
+        description="Detail of each gap — record_id, expected hash, stored hash"
+    )
+    first_record_hash: Optional[str] = Field(
+        None,
+        description=(
+            "SHA-256 hash of the genesis record. "
+            "Publish this to allow independent verification that the chain "
+            "started from a known, legitimate state."
+        )
+    )
+ 
+ 
+class AuditSummaryResponse(BaseModel):
+    total_records: int
+    by_event_type: dict = Field(
+        ...,
+        description="Record count per event type, descending by count"
+    )
+    by_classification: dict = Field(
+        ...,
+        description="Record count per classification level with human-readable labels"
+    )
+    earliest_timestamp: Optional[str]
+    latest_timestamp: Optional[str]
+    chain_intact: bool
+    chain_total: int
+    chain_gaps: int
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPANDED AUDIT ENDPOINTS
+# Replace the existing get_audit() endpoint and add two new endpoints.
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+@app.get(
+    "/audit",
+    response_model=AuditQueryResponse,
+    tags=["Audit"],
+    summary="Query the permanent audit trail with filters and pagination",
+)
+async def get_audit(
+    event_type: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    classification_min: int = 0,
+    identity: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    order: str = "desc",
+    auth: tuple = Depends(_require_session),
+):
+    """
+    Query the permanent, append-only audit trail with composable filters.
+ 
+    All parameters are optional. Combine any subset for targeted queries.
+ 
+    ---
+ 
+    ### Filters
+ 
+    - **event_type** — exact match on event type string
+      Examples: `CHECKPOINT`, `SESSION_START`, `SESSION_END`, `INTAKE`,
+      `CRISIS`, `READ_ACCESS`, `SERVER_START`
+ 
+    - **since** — ISO 8601 timestamp lower bound (inclusive)
+      Example: `2026-01-01T00:00:00+00:00`
+ 
+    - **until** — ISO 8601 timestamp upper bound (inclusive)
+      Example: `2026-12-31T23:59:59+00:00`
+ 
+    - **classification_min** — minimum sensitivity level (0–5, inclusive)
+      `0` = all records | `2` = personal data and above | `3` = sensitive
+ 
+    - **identity** — partial match on the human_decision / identity field
+      Returns all records where this string appears in the decision field.
+ 
+    - **search** — partial text search across `input` and `notes` fields
+      Case-insensitive. May return records containing personal data —
+      reads of classification ≥ 2 are automatically logged as READ_ACCESS
+      events per U3 (read logging).
+ 
+    ### Pagination
+ 
+    Use `limit` and `offset` together. The response includes `total`
+    (matching records before pagination) and `pages` so you can navigate.
+ 
+    Example — page 3 of 20 records per page:
+    ```
+    GET /audit?limit=20&offset=40
+    ```
+ 
+    ### Sort order
+ 
+    `order=desc` — newest first (default, useful for live monitoring)
+    `order=asc`  — oldest first (useful for compliance review)
+ 
+    ### Privacy
+ 
+    Reads of records at classification level 2 or above generate a
+    `READ_ACCESS` event in the audit trail. The audit of the audit
+    is itself auditable.
+    """
+    _, new_token = auth
+ 
+    try:
+        result = memory.query(
+            event_type=event_type,
+            since=since,
+            until=until,
+            classification_min=classification_min,
+            identity=identity,
+            search=search,
+            limit=limit,
+            offset=offset,
+            order=order,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audit query failed: {type(exc).__name__}: {exc}",
+        )
+ 
+    total = result["total"]
+    pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+    page = (offset // limit) + 1 if limit > 0 else 1
+ 
+    return JSONResponse(
+        status_code=200,
+        headers=_session_headers(new_token),
+        content=AuditQueryResponse(
+            records=result["records"],
+            total=total,
+            limit=result["limit"],
+            offset=result["offset"],
+            filters=result["filters"],
+            page=page,
+            pages=pages,
+        ).model_dump(),
+    )
 
 
 class HealthResponse(BaseModel):
@@ -680,63 +840,103 @@ async def process(
     tags=["Audit"],
     summary="Read the permanent audit trail",
 )
-async def get_audit(
-    event_type: Optional[str] = None,
-    limit: int = 50,
+@app.get(
+    "/audit/chain",
+    response_model=AuditChainResponse,
+    tags=["Audit"],
+    summary="Verify the cryptographic Merkle chain integrity of the audit trail",
+)
+async def get_audit_chain(
     auth: tuple = Depends(_require_session),
 ):
     """
-    Read records from the permanent, append-only audit trail.
-
-    The audit trail records every action the system takes:
-    SESSION_START, SESSION_END, CHECKPOINT, INTAKE, SERVER_START, and more.
-    It cannot be deleted or modified — only read.
-
-    **Parameters**
-    - `event_type` — filter to a specific event type (optional)
-    - `limit` — maximum records to return (default 50, max 200)
-
-    Every read of the audit trail is itself recorded as a READ_ACCESS event.
-    This is GDPR Art. 30 compliance — reads are as visible as writes.
+    Verify the Merkle chain that links every audit record to its predecessor.
+ 
+    Every record in the audit trail stores the SHA-256 hash of the previous
+    record's content. This endpoint walks the entire chain, recomputes the
+    expected hash at each step, and compares it to the stored value.
+ 
+    **`intact: true`** — every record links correctly. The chain is unbroken.
+ 
+    **`intact: false`** — one or more records have an incorrect chain_hash.
+    This may indicate tampering, a gap from deletion, or a record written
+    incorrectly due to a crash. The `gap_detail` field identifies exactly
+    which record IDs are affected.
+ 
+    The `first_record_hash` field is the SHA-256 hash of the genesis record —
+    the first record ever written to this audit trail. If you publish this
+    value publicly (for example, in the project Gist), any third party can
+    verify that the chain started from a known legitimate state.
+ 
+    This check is O(n) — it reads every record. On large databases it may
+    take several seconds. Use `GET /audit/summary` for a fast chain status
+    check in dashboards (it also returns `chain_intact` but with less detail).
     """
     _, new_token = auth
-
-    limit = min(max(1, limit), 200)
-
+ 
     try:
-        if event_type:
-            records = memory.read_by_type(event_type)
-            records = records[-limit:]
-        else:
-            records = memory.read_recent(limit)
+        result = memory.verify_chain()
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Audit read failed: {type(exc).__name__}: {exc}",
+            detail=f"Chain verification failed: {type(exc).__name__}: {exc}",
         )
-
-    # U3: Read logging — reads of sensitive records are themselves recorded
-    memory.record(
-        event_type="READ_ACCESS",
-        notes=(
-            f"Audit trail read via API. "
-            f"Filter: {event_type or 'none'}. "
-            f"Limit: {limit}. "
-            f"Records returned: {len(records)}."
-        ),
-        classification=0,
-    )
-
+ 
     return JSONResponse(
         status_code=200,
         headers=_session_headers(new_token),
-        content=AuditResponse(
-            records=records,
-            count=len(records),
-            filtered_by=event_type,
+        content=AuditChainResponse(
+            intact=result["intact"],
+            total=result["total"],
+            gaps=len(result["gaps"]),
+            gap_detail=result["gaps"],
+            first_record_hash=result["first_record_hash"],
         ).model_dump(),
     )
-
+@app.get(
+    "/audit/summary",
+    response_model=AuditSummaryResponse,
+    tags=["Audit"],
+    summary="Aggregate statistics and chain status across the audit trail",
+)
+async def get_audit_summary(
+    auth: tuple = Depends(_require_session),
+):
+    """
+    Returns aggregate statistics across the entire audit trail.
+ 
+    Designed for dashboards, health monitors, and compliance reports.
+    Returns counts and distributions — no record content.
+ 
+    **by_event_type** — record count per event type, descending.
+    Shows what the system has been doing at a glance.
+ 
+    **by_classification** — record count per sensitivity level.
+    Shows how much personal or sensitive data has been processed.
+    Useful for GDPR Article 30 records of processing activities.
+ 
+    **chain_intact** — fast Merkle chain integrity flag.
+    `true` = the audit trail is cryptographically unbroken.
+    Use `GET /audit/chain` for full detail when this is `false`.
+ 
+    This endpoint does not generate READ_ACCESS events — it returns
+    only aggregate statistics, never record content.
+    """
+    _, new_token = auth
+ 
+    try:
+        result = memory.summarize()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Summary failed: {type(exc).__name__}: {exc}",
+        )
+ 
+    return JSONResponse(
+        status_code=200,
+        headers=_session_headers(new_token),
+        content=AuditSummaryResponse(**result).model_dump(),
+    )
 
 @app.delete(
     "/session",
