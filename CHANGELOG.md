@@ -6,6 +6,76 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — API Layer, Session Management, Merkle Chain Tests
+
+### Added
+
+- **`core/session.py`** — Session management layer (checklist item 2.09).
+  256-bit cryptographic tokens. Token rotation on every authenticated
+  request (T-013 mitigation). Idle timeout and hard max-duration expiry.
+  Adaptive audit dispatch (1- or 2-arg callable). Session events written
+  permanently to SQLite audit trail via `memory.record()`. Connection
+  binding, data classification escalation, GDPR-forward consent reference
+  field. Thread-safe singleton. Swap-in interface for Stage 2 SSO.
+  17 tests in `tests/test_session.py`.
+
+- **`api/main.py`** — HTTP API server (checklist item 3.04). Five
+  endpoints wrapping the ONTO five-step processing loop: `GET /health`,
+  `POST /auth`, `POST /process`, `GET /audit`, `DELETE /session`.
+  CRISIS signals never suppressed — always surfaced to client.
+  Pending-checkpoint flow preserves human sovereignty at every
+  consequential decision. Token rotation on every request via
+  `X-Session-Token` response header. Rate limiting via existing
+  `core/ratelimit.py`. Principle verification at startup — server refuses
+  to start with tampered principles. Auto-generated OpenAPI documentation
+  at `/docs` and `/redoc`. Checkpoint human-decision injection via
+  `unittest.mock.patch` — no modification to `checkpoint.py` required.
+
+- **`api/__init__.py`** — Package init for the `api/` module.
+
+- **`docs/FAQ.md`** — Frequently asked questions document (checklist
+  item 3.06). Covers installation, principles, audit trail, checkpoint,
+  CRISIS protocol, authentication, sessions, configuration, privacy,
+  and development workflow. Plain English throughout.
+
+- **`tests/test_onto.py::TestMerkleChainCore`** — 7 Merkle chain tests
+  (checklist item 1.13). Verifies: genesis record has no chain_hash,
+  second record links to first, chain_hash is valid 64-char SHA-256 hex,
+  hash value is independently reproducible, `verify_chain()` passes for
+  intact trail, `verify_chain()` detects deliberately wrong chain_hash,
+  `verify_chain()` result has all required fields. Direct SQLite INSERT
+  (bypassing `record()`) used to simulate a corrupted chain_hash without
+  triggering the append-only trigger.
+
+### Changed
+
+- **`requirements-test.txt`** — Added `fastapi>=0.115.0`,
+  `uvicorn[standard]>=0.27.0`, `httpx>=0.27.0` for API server and
+  testing. Added explicit `starlette>=0.45.3` pin to resolve
+  GHSA-7f5h-v6xp-fcq8 (ReDoS in Range header parsing). Python 3.8
+  dropped — EOL October 2024, incompatible with fixed starlette versions.
+
+- **`.github/workflows/ci.yml`** — Python 3.8 removed from matrix.
+  CI now runs across Python 3.9, 3.10, 3.11, 3.12.
+
+- **`tests/test_onto.py`** — `tearDown` updated to use
+  `shutil.rmtree(self.test_dir, ignore_errors=True)`. WAL-mode SQLite
+  creates `.db-wal` and `.db-shm` sidecar files that may be auto-cleaned
+  by SQLite before `tearDown` runs, causing a spurious
+  `FileNotFoundError`. `ignore_errors=True` eliminates the race.
+
+- **`tests/README.md`** — Updated test counts and class table to reflect
+  195 total passing tests across all test files.
+
+### Security
+
+- Explicit `starlette>=0.45.3` pin resolves GHSA-7f5h-v6xp-fcq8 — ReDoS
+  vulnerability in Starlette's Range header parsing. Our API does not use
+  `FileResponse` or `StaticFiles`, but the pin is correct practice.
+- Python 3.8 removed from CI — EOL runtimes receive no security patches.
+
+---
+
 ## [Unreleased] — Security Hardening and Review Pass
 
 ### Added
@@ -20,11 +90,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   at boot (T-012), and exponential backoff lockout (T-014). Swap-in
   interface for future SSO integration.
 
-- **`GOVERNANCE.md`** — Formal project governance document. Defines
-  current founder-leader model, transition path to Self-Appointing
-  Council, values change process (90-day comment + supermajority),
-  protocol fork policy, anti-concentration commitment, and cooperative
-  evolution path.
+- **`GOVERNANCE.md`** — Formal project governance document (checklist
+  item 3.13). Defines current founder-leader model, transition path to
+  Self-Appointing Council, values change process (90-day comment +
+  supermajority), protocol fork policy, anti-concentration commitment,
+  and cooperative evolution path.
 
 - **`docs/THREAT_MODEL_001.txt`** — 28 threats across 9 categories.
   Every known attack vector named, severity and likelihood assessed,
