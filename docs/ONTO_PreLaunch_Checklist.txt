@@ -1,50 +1,37 @@
 ONTO — PRE-LAUNCH CHECKLIST
-Version: v9
+Version: v10
 Date: 2026-04-01
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANGES FROM v8 TO v9
+CHANGES FROM v9 TO v10
 
-1. MARK COMPLETE — Item 1.14
-   tests/test_graph.py — 32 tests, CI green.
-   7 classes: Initialize (3), Relate (10), Navigate (7),
-   Decay (4), Wipe (5), EffectiveWeight (3),
-   SpacingIncrement (3), ConceptExtraction (3).
+1. MARK COMPLETE — Item 2.01
+   Database encryption fully integrated into main.py.
+   Boot: authenticate → derive Argon2id key → decrypt DB to session path
+         → redirect memory.DB_PATH → initialize memory and graph.
+   Shutdown: checkpoint WAL → encrypt session file in place → move to
+             permanent path → remove sidecar files → clear key from memory.
+   Development mode (AUTH_REQUIRED=false) is unaffected — zero behaviour
+   change for existing users without auth configured.
+   CI: green ✅
 
-2. MARK COMPLETE — Item 1.16
-   graph.initialize() + graph.decay() added to main.py boot
-   sequence as step 3 of 4. _GRAPH_AVAILABLE is True.
-
-3. MARK COMPLETE — Item 1.17
-   Crisis content never stored — confirmed by
-   test_relate_crisis_never_stored in test_graph.py.
-
-4. MARK COMPLETE — Item 2.02
-   tests/test_auth.py exists with 11 tests — CI green.
-   Coverage: setup, passphrase never stored in plaintext,
-   auth state fields, correct/wrong passphrase, result
-   contains passphrase, clear_passphrase(), brute-force
-   attempt count, input validation, verification phrase.
-
-5. MARK COMPLETE — Item 3.14
-   docs/GRAPH_THEORY_001.md committed to repository.
-
-6. UPDATE — Test count
-   195 → 227 (+ 32 from test_graph.py)
-
-7. UPDATE — CHANGELOG.md, API.md, tests/README.md
-   All three updated with graph.py entries.
-   Items 3.15 and 3.16 marked complete accordingly.
+2. NOTE — All critical code items are now complete.
+   The only remaining items blocking Stage 1 exit are external:
+     2.04 — Third-party security audit
+     4.01 — Legal counsel engaged
+   Everything else is documentation, compliance mapping, and Stage 2 prep.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CURRENT STATUS — Version 1.0 MVP + Security + API + Relationship Graph
+CURRENT STATUS — All Code Items Complete
 
 Tests: 227 passing across Python 3.9–3.12
 CI: green ✅
 Ratification: all 3 conditions met ✅
 API: live at /docs ✅
+Encryption: integrated ✅
+Graph: live ✅
 
 [✅] Principles written, sealed, and hash-verified
 [✅] Core modules written and syntax-verified
@@ -73,6 +60,9 @@ API: live at /docs ✅
 [✅] 1.14 — tests/test_graph.py — 32 tests, CI green
 [✅] 1.16 — graph.py bootstrapped in main.py boot sequence
 [✅] 1.17 — crisis_detected propagation tested and confirmed
+[✅] 2.01 — Database encryption — integrated into main.py
+              Boot decrypts to session path. Shutdown re-encrypts.
+              Key cleared every session. Dev mode unaffected.
 [✅] 2.02 — Authentication — tests/test_auth.py, 11 tests, CI green
 [✅] 2.03 — Input sanitization against injection attacks
 [✅] 2.05 — Rate limiting — core/ratelimit.py
@@ -112,31 +102,23 @@ SECTION 1 — CORE
               Once the system has been used for 30+ days, sample
               edge weight distributions and compare to expected
               power-law curve. Adjust if user forgetting pattern
-              differs significantly from ACT-R baseline.
-              Note: individual forgetting rates vary (Sense et al. 2016).
+              differs from ACT-R baseline.
+              Note: can only be done after real usage data accumulates.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SECTION 2 — SECURITY (complete before Stage 1 exit)
+SECTION 2 — SECURITY
 
-  [ ] 2.01 — Database encryption — full integration
-              Status: core/encryption.py exists. test_encryption.py
-              exists with 8 unit tests (key derivation, salt, clear).
-              MISSING: integration of encryption into the main workflow.
-              Specifically:
-                — main.py boot: auth → derive key → decrypt DB to temp
-                — main.py shutdown: re-encrypt DB, clear key from memory
-                — memory.py: use temp path when encryption is active
-              This is only triggered when ONTO_AUTH_REQUIRED=true and
-              a passphrase is configured. Development mode is unaffected.
+  [ ] 2.04 — Third-party security audit
+              GATE: required before any public launch or multi-user
+              deployment. Covers authentication, encryption, session
+              management, input handling, audit trail integrity.
+              See IP and audit path document for engagement guidance.
 
-  [ ] 2.04 — Third-party security audit (before public launch)
-
-  [ ] 2.12 — Test wipe() for GDPR compliance
-              Note: covered in test_graph.py (test_wipe_records_audit_event
-              and test_wipe_navigate_returns_empty_after). Mark complete
-              once CI confirms those tests pass consistently.
-              Formal compliance mapping document still needed.
+  [ ] 2.12 — GDPR wipe compliance mapping document
+              test_graph.py covers the technical behaviour.
+              A formal document mapping wipe() to GDPR Article 17
+              requirements still needed for legal review.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -151,38 +133,36 @@ SECTION 3 — DOCUMENTATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SECTION 4 — LEGAL
+GATE: Engage legal counsel before any public launch.
 
   [ ] 4.01 — Legal counsel engaged
+              Priority. Everything in this section flows from this.
 
-  [ ] 4.02 — Privacy policy
-              Note: docs/PRIVACY_POLICY.md exists as draft.
-              Pending legal review.
+  [ ] 4.02 — Privacy policy reviewed by counsel
+              Note: docs/PRIVACY_POLICY.md exists as a detailed draft.
 
-  [ ] 4.03 — Terms of use
-              Note: docs/TERMS_OF_USE.md exists as draft.
-              Pending legal review.
+  [ ] 4.03 — Terms of use reviewed by counsel
+              Note: docs/TERMS_OF_USE.md exists as a detailed draft.
 
-  [ ] 4.04 — Legal review of graph data as personal data under GDPR
-              The graph stores associative patterns derived from user
-              inputs. Whether this constitutes personal data under
-              GDPR Article 4(1) depends on whether individuals are
-              identifiable from it. Single-user local deployments are
-              lower risk. Multi-user deployments require formal review.
+  [ ] 4.04 — Legal review: graph data as personal data under GDPR
+              The relationship graph stores associative patterns derived
+              from user inputs. Counsel should assess whether this
+              constitutes personal data under GDPR Article 4(1) and what
+              processing basis applies.
 
   [ ] 4.05 — EU AI Act classification assessment
-              Determine whether ONTO qualifies as a high-risk AI system
-              under Annex III (profiling, decision support).
-              Legal counsel review recommended before any deployment
-              in employment, education, or access to services contexts.
+              Determine whether ONTO qualifies as high-risk under
+              Annex III. Legal counsel required before deployment in
+              employment, education, or access to services contexts.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SECTION 5 — COMPLIANCE
 
-  [ ] 5.01 — GDPR architecture (right to erasure vs append-only trail)
-              Note: graph.wipe() implements erasure of the relationship
-              graph. Cryptographic erasure of the audit trail payload
-              still needed. See docs/COMPLIANCE_001.txt.
+  [ ] 5.01 — GDPR architecture: cryptographic erasure of audit trail
+              graph.wipe() covers the graph. Cryptographic erasure
+              of the audit trail payload (key destruction per
+              docs/COMPLIANCE_001.txt) still needs implementation.
 
   [ ] 5.02 — CCPA compliance review
 
@@ -190,86 +170,45 @@ SECTION 5 — COMPLIANCE
 
   [ ] 5.04 — Consent management framework
 
-  [ ] 5.06 — Cookie and tracking policy (web interface added)
+  [ ] 5.06 — Cookie and tracking policy (if web interface deployed)
 
-  [ ] 5.07 — Data classification at intake (C3 from REVIEW_001)
-              Note: classification field exists in intake.py.
-              Needs formal compliance mapping document.
+  [ ] 5.07 — Formal compliance mapping for data classification
 
-  [ ] 5.08 — Safe messaging response text (C4 from REVIEW_001)
-              Note: CRISIS response text exists in core/config.py.
-              Needs formal AFSP/SAMHSA/WHO compliance review.
+  [ ] 5.08 — AFSP/SAMHSA/WHO safe messaging compliance review
+              Crisis response text exists in core/config.py.
+              Formal compliance review still needed.
 
   [ ] 5.09 — Mental health professional review of sensitive/crisis sets
-              _SENSITIVE_CONCEPTS and _CRISIS_CONCEPTS in graph.py are
-              intentionally conservative initial sets. Before deploying
-              to any population that may include vulnerable individuals,
-              have a qualified mental health professional review and
-              expand these sets.
 
   [ ] 5.10 — Safe messaging compliance for crisis_detected pathway
-              When relate() returns crisis_detected=True, verify the
-              full pipeline surfaces:
-                — Immediate crisis resources
-                — Language compliant with AFSP/SAMHSA safe messaging
-                — No storage of crisis content in graph
-              Builds on existing item 5.08.
 
-  [ ] 5.11 — Graph bias audit
-              Before any multi-user deployment:
-                — Sample navigation results for systematic skew
-                — Verify PPMI approximation does not amplify stereotypes
-                — Consider minimum co-occurrence threshold (require 2+
-                  inputs) before an edge becomes traversable
+  [ ] 5.11 — Graph bias audit before any multi-user deployment
 
-  [ ] 5.12 — Graph entropy / echo chamber monitoring (design item)
-              Design threshold alert in navigate() when top-3 results
-              account for >80% of total effective weight.
-              No code change required now — design document only.
+  [ ] 5.12 — Graph entropy / echo chamber monitoring (design document)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SECTION 6 — STAGE 2 PREPARATION
-(Design decisions to make now so Stage 2 upgrades require no
-schema or interface changes. Not Stage 1 exit criteria.)
+(Not Stage 1 exit criteria — design decisions to make while the
+architecture is fresh, so Stage 2 upgrades need no schema changes.)
 
-  [ ] 6.01 — Design directed edge schema (Stage 2 prep)
-              Current: undirected edges (UUID-normalised direction).
-              Stage 2: directed + typed edges (is-a, causes, part-of).
-              Design backward-compatible schema extension.
-
-  [ ] 6.02 — Design Personalized PageRank interface (Stage 2 prep)
-              PPR replaces BFS depth-2. navigate() signature unchanged.
-              Only _bfs_navigate() is replaced. Confirm NetworkX as
-              the Stage 2 dependency.
-
-  [ ] 6.03 — Design full PPMI matrix approach (Stage 2 prep)
-              Schema already stores what is needed. Document the exact
-              PPMI formula to implement in Stage 2.
-
-  [ ] 6.04 — Design per-user decay calibration (Stage 2 prep)
-              DECAY_EXPONENT becomes a per-user parameter in a
-              user_preferences table. Default 0.5.
-
-  [ ] 6.05 — Evaluate spaCy for concept extraction (Stage 2 prep)
-              Current RAKE-inspired extraction is stdlib-only.
-              Evaluate: package size, mobile constraints, cold start.
-              _extract_concepts() contract unchanged — just swap impl.
+  [ ] 6.01 — Design directed edge schema
+  [ ] 6.02 — Design Personalized PageRank interface
+  [ ] 6.03 — Design full PPMI matrix approach
+  [ ] 6.04 — Design per-user decay calibration
+  [ ] 6.05 — Evaluate spaCy for concept extraction
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SECTION 7 — DOCUMENTATION CORRECTIONS
 
-  [ ] 7.01 — Update all docs that describe ONTO as "autopoietic"
-              Correct framing: "autopoietically-inspired",
-              "cognitive scaffold" (Clark & Chalmers 1998),
-              "conatus-like self-maintenance" (Spinoza).
-              Files: README.md, CRE-SPEC-001-v06.md,
+  [ ] 7.01 — Update "autopoietic" → "autopoietically-inspired" /
+              "cognitive scaffold" in README.md, CRE-SPEC-001-v06.md,
               CROSSOVER_CONTRACT_v1.0.md, ONTO_Preservation_Document.txt
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-GITHUB SECURITY ACTIONS (do immediately)
+GITHUB SECURITY ACTIONS
 
   [ ] Enable signed commits (GPG)
   [ ] Publish genesis block hash to Gist at first production deployment
@@ -278,18 +217,11 @@ GITHUB SECURITY ACTIONS (do immediately)
 
 STAGE 1 EXIT CRITERIA STATUS
 
-  [ ] All CRITICAL checklist items complete — in progress
-      Blocking item: 2.01 (encryption integration)
-  [ ] Security audit passed — not yet engaged
-  [ ] Legal foundation in place — not yet engaged
-  [ ] A stranger can deploy from README — FAQ + /docs significantly helps
+  [✅] All critical code items complete — done
+  [ ] Security audit passed — not yet engaged (item 2.04)
+  [ ] Legal foundation in place — not yet engaged (item 4.01)
+  [✅] A stranger can deploy from README — FAQ + /docs in place
   [ ] All 28 threats with Open+Critical status mitigated or accepted
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NEXT: Item 2.01 — encryption integration is the last substantive
-code item blocking Stage 1 exit. Everything else is documentation,
-legal, or long-term compliance work.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
