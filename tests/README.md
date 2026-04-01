@@ -16,7 +16,7 @@ If any test fails — something needs attention before shipping.
 ## What success looks like
 
 ```
-195 passed, 0 failed, 0 errors
+227 passed, 0 failed, 0 errors
 ```
 
 If you see anything different — something needs attention.
@@ -30,7 +30,7 @@ The output will tell you exactly which test failed and why.
 pip install -r requirements-test.txt
 ```
 
-This installs pytest — the tool that runs the tests.
+This installs pytest and all test dependencies.
 You only need to do this once.
 
 ---
@@ -60,7 +60,7 @@ ERROR    — something unexpected happened
 At the end you will see a summary:
 
 ```
-195 passed in X.Xs
+227 passed in X.Xs
 ```
 
 ---
@@ -130,12 +130,12 @@ TestEdgeCases         |  12   | Unusual but real situations the system may encou
 
 ### tests/test_conformance.py — Crossover contract (16 tests)
 
-Class              | Tests | What it covers
--------------------|-------|-----------------------------------------------
-TestRelate         |   4   | RELATE function — input ingestion and classification
-TestNavigate       |   4   | NAVIGATE function — context traversal and uncertainty
-TestGovern         |   4   | GOVERN function — human sovereignty checkpoint
-TestRemember       |   4   | REMEMBER function — permanent audit trail
+Class          | Tests | What it covers
+---------------|-------|-----------------------------------------------
+TestRELATE     |   4   | RELATE function — input ingestion and classification
+TestNAVIGATE   |   4   | NAVIGATE function — context traversal and uncertainty
+TestGOVERN     |   4   | GOVERN function — human sovereignty checkpoint
+TestREMEMBER   |   4   | REMEMBER function — permanent audit trail
 
 ### tests/test_security.py — Security hardening (28 tests)
 
@@ -169,6 +169,51 @@ TestSessionValidation  |   5   | Valid/invalid/expired token handling
 TestSessionRotation    |   3   | Token rotation — old token immediately invalid
 TestSessionTermination |   3   | Explicit termination behavior
 TestSessionAuditTrail  |   2   | Session events recorded permanently
+
+### tests/test_auth.py — Authentication (11 tests)
+
+Class                | Tests | What it covers
+---------------------|-------|-----------------------------------------------
+TestAuthentication   |  11   | Argon2id passphrase hashing, plaintext never stored,
+                     |       | correct/wrong passphrase, clear_passphrase(),
+                     |       | brute force attempt tracking, input validation,
+                     |       | verification phrase T-012
+
+Note: These tests require `argon2-cffi`. They are automatically skipped
+if the library is not available (see tests/conftest.py).
+
+### tests/test_encryption.py — AES-256-GCM encryption (8 tests)
+
+Class                | Tests | What it covers
+---------------------|-------|-----------------------------------------------
+TestEncryptionLayer  |   8   | Key derivation (32 bytes), key cleared on
+                     |       | clear_key(), same passphrase/salt → same key,
+                     |       | different passphrase → different key,
+                     |       | per-installation salt, salt file creation
+
+Note: These tests require `cryptography` and `argon2-cffi`. They are
+automatically skipped if either library is not available.
+
+### tests/test_graph.py — Relationship graph (32 tests)
+
+Class                   | Tests | What it covers
+------------------------|-------|-----------------------------------------------
+TestGraphInitialize     |   3   | Tables created, indexes exist, idempotent
+TestGraphRelate         |  10   | Node/edge creation, reinforcement, input counter,
+                        |       | result schema, crisis never stored (safety-critical),
+                        |       | sensitive detection, sensitive edges marked
+TestGraphNavigate       |   7   | Empty/unknown query, related concepts returned,
+                        |       | result schema, sorted by weight, sensitive excluded
+                        |       | by default, source always "graph"
+TestGraphDecay          |   4   | Recent edges preserved, stale edges pruned,
+                        |       | orphaned nodes removed, return counts
+TestGraphWipe           |   5   | All nodes deleted, all edges deleted, counter reset,
+                        |       | navigate empty after wipe, audit event recorded
+TestEffectiveWeight     |   3   | Power-law decay reduces weight over time,
+                        |       | sensitive edges decay faster, result clamped [0,1]
+TestSpacingIncrement    |   3   | Immediate = base, 30-day = 2× base, monotonic
+TestConceptExtraction   |   3   | Empty text → empty list, stopwords filtered,
+                        |       | MAX_CONCEPTS_PER_INPUT respected
 
 ---
 
