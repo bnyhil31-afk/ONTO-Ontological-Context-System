@@ -174,7 +174,8 @@ They are the price of the name.
 
 PART IV — IF ONTO IS FORKED
 
-Anyone may fork ONTO's code. The MIT license guarantees this.
+Anyone may fork ONTO's code. The LGPL-2.1 license guarantees this. 
+Modifications to the core must be shared back under the same license.
 Forks are welcomed. Forks are how open source grows.
 
 However:
