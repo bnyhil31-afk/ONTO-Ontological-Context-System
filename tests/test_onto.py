@@ -76,7 +76,7 @@ class ONTOTestCase(unittest.TestCase):
         """Restore original state and clean up after each test."""
         self._memory.DB_PATH = self._original_db
         self._ctx._field = self._original_field
-        shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def _make_package(self, text, complexity="simple", safety=None):
         """
