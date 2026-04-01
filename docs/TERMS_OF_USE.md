@@ -1,9 +1,9 @@
 # Terms of Use
 
-**Project:** ONTO — Ontological Context System  
-**Version:** Draft 1.0  
-**Status:** Pending legal review (checklist item 4.01)  
-**Last updated:** 2026
+**Project:** ONTO — Ontological Context System
+**Version:** Draft 1.1
+**Status:** Pending legal review (checklist item 4.01)
+**Last updated:** 2026-04-01
 
 > **Notice:** This is a working draft. It has not been reviewed by legal
 > counsel. It must not be used as final terms of use for any deployment
@@ -25,9 +25,9 @@
 
 ## 1. What ONTO is
 
-ONTO is an open-source software system licensed under the MIT License.
-It is provided as a tool to help people make sense of information
-in context.
+ONTO is an open-source software system licensed under the GNU Lesser
+General Public License v2.1 (LGPL-2.1). It is provided as a tool to
+help people make sense of information in context.
 
 It is not a medical device, a legal advisor, a financial advisor,
 a mental health service, or a crisis intervention service. It is
@@ -48,13 +48,15 @@ law in your jurisdiction.
 
 You may:
 - Use ONTO for any personal, educational, research, or commercial purpose
-- Modify ONTO under the terms of the MIT License
-- Distribute ONTO under the terms of the MIT License
+- Modify ONTO under the terms of the LGPL-2.1 License
+  (modifications to the library itself must be shared back under
+  the same license)
+- Distribute ONTO under the terms of the LGPL-2.1 License
 - Deploy ONTO for others to use (subject to Section 7)
-- Build products and services on top of ONTO
+- Build proprietary applications that use ONTO without modifying it
 
-The MIT License governs all use, modification, and distribution of
-the software itself.
+The LGPL-2.1 License governs all use, modification, and distribution
+of the software itself. See the LICENSE and NOTICE files for full terms.
 
 ---
 
@@ -191,13 +193,21 @@ any claim is based.
 
 ---
 
-## 11. MIT License
+## 11. License
 
-The software is licensed under the MIT License. The full text of the
-license is in the `LICENSE` file in the repository.
+The software is licensed under the GNU Lesser General Public License
+v2.1 (LGPL-2.1). The full text of the license is in the `LICENSE`
+file in the repository. The `NOTICE` file contains the copyright
+assertion and intellectual property notices.
 
-The MIT License governs the software. These Terms of Use govern
+LGPL-2.1 means: you may use ONTO freely, including in proprietary
+applications built on top of it. If you modify ONTO's source code
+itself, those modifications must be released under LGPL-2.1.
+
+The LGPL-2.1 governs the software. These Terms of Use govern
 responsible use of the software. Both apply.
+
+Patent applications may be pending. See the `NOTICE` file.
 
 ---
 
@@ -236,6 +246,6 @@ qualified lawyer.
 
 ---
 
-*These terms are part of the permanent record of ONTO.*  
-*They are updated as the project and its legal understanding evolves.*  
+*These terms are part of the permanent record of ONTO.*
+*They are updated as the project and its legal understanding evolves.*
 *They are honest about what is not yet settled.*
