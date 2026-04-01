@@ -1,54 +1,68 @@
 ONTO — PRE-LAUNCH CHECKLIST UPDATE
-Session: 2026-03-30 (continued)
-Previous version: v5 (38 remaining)
-This version: v6
+Session: 2026-03-31
+Previous version: v6 (31 remaining)
+This version: v7
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANGES FROM v5 TO v6
+CHANGES FROM v6 TO v7
 
-1. MARK COMPLETE — Item 1.12
-   Change: [ ] 1.12 → [✅] 1.12
-   Note: 16 conformance tests added in tests/test_conformance.py
-         All three ratification conditions now fully met.
+1. MARK COMPLETE — Item 1.13
+   Change: [ ] 1.13 → [✅] 1.13
+   Note: TestMerkleChainCore added to tests/test_onto.py — 7 tests.
+         Genesis record has no chain_hash. Second record links to first.
+         chain_hash is 64-char SHA-256 hex. Hash is independently
+         reproducible. verify_chain() passes for intact trail.
+         verify_chain() detects corrupted chain_hash. Result structure
+         verified. Direct SQLite INSERT used to simulate corruption.
 
-2. MARK COMPLETE — Item 2.03
-   Change: [ ] 2.03 → [✅] 2.03
-   Note: Already completed as part of items 1.07 and 1.08.
-         SQL injection, command injection, path traversal all handled.
-         Formally closed this session.
+2. MARK COMPLETE — Item 2.09
+   Change: [ ] 2.09 → [✅] 2.09
+   Note: core/session.py — 256-bit tokens, token rotation (T-013),
+         idle timeout, hard max-duration, connection binding, data
+         classification escalation, GDPR-forward consent_reference.
+         Session events written to SQLite audit trail via memory.record().
+         Thread-safe singleton. Swap-in interface for Stage 2 SSO.
+         17 tests in tests/test_session.py — all passing.
 
-3. MARK COMPLETE — Item 2.05
-   Change: [ ] 2.05 → [✅] 2.05
-   Note: core/ratelimit.py — sliding window rate limiter.
-         Default: 60 inputs per 60 seconds. Configurable via env.
-         Tests in tests/test_security.py.
+3. MARK COMPLETE — Item 3.04
+   Change: [ ] 3.04 → [✅] 3.04
+   Note: api/main.py — FastAPI server with auto-generated OpenAPI docs.
+         Interactive documentation at /docs (Swagger UI).
+         Reference documentation at /redoc.
+         Five endpoints: /health, /auth, /process, /audit, /session.
+         Documentation is live and accessible on any running instance.
 
-4. MARK COMPLETE — Item 2.06
-   Change: [ ] 2.06 → [✅] 2.06
-   Note: principles.hash integrity tests added.
-         SHA-256 algorithm verified. Tamper detection confirmed.
-         Tests in tests/test_security.py.
+4. MARK COMPLETE — Item 3.06
+   Change: [ ] 3.06 → [✅] 3.06
+   Note: docs/FAQ.md — comprehensive FAQ covering installation,
+         principles, audit trail, checkpoint, CRISIS protocol,
+         authentication, sessions, configuration, privacy, and
+         development workflow. Plain English throughout.
 
-5. MARK COMPLETE — Item 2.07
-   Change: [ ] 2.07 → [✅] 2.07
-   Note: pip-audit added to CI workflow.
-         Scans requirements-test.txt on every push.
-         ONTO has zero vulnerable dependencies confirmed.
+5. MARK COMPLETE — Item 3.13
+   Change: [ ] 3.13 → [✅] 3.13
+   Note: GOVERNANCE.md — already exists and is comprehensive.
+         Founder-leader model, transition path to Self-Appointing
+         Council, values change process (90-day comment +
+         supermajority), protocol fork policy, anti-concentration
+         commitment, cooperative evolution path. Formally closing
+         this item as it was listed as NEW in v6 but the file
+         already existed and is complete.
 
-6. MARK COMPLETE — Item 2.11
-   Change: [ ] 2.11 → [✅] 2.11
-   Note: core/config.py — all config loads from environment variables.
-         .env.example published — documents every variable.
-         .env in .gitignore — secrets cannot be committed.
-         Tests in tests/test_security.py.
+6. UPDATE CI MATRIX
+   Note: Python 3.8 removed from CI matrix (EOL October 2024).
+         CI now runs Python 3.9, 3.10, 3.11, 3.12.
+         Item 1.11 updated: "green across Python 3.9–3.12"
 
-7. UPDATE CURRENT STATUS SECTION
-   Replace the current status block at the bottom with this:
+7. SECURITY — starlette CVE resolved
+   Note: GHSA-7f5h-v6xp-fcq8 (ReDoS in Range header parsing).
+         Resolved by pinning starlette>=0.45.3 in requirements-test.txt.
+         pip-audit now passes with zero vulnerable dependencies.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CURRENT STATUS — Version 1.0 MVP
+CURRENT STATUS — Version 1.0 MVP + Security Hardening + API Layer
 
 [✅] Principles written, sealed, and hash-verified
 [✅] Core modules written and syntax-verified
@@ -61,36 +75,90 @@ CURRENT STATUS — Version 1.0 MVP
 [✅] Project record document created
 [✅] README complete with install instructions
 [✅] Gist published — 3 sealed hashes recorded
-[✅] 1.01 — Test suite — 136 tests, all passing
+[✅] 1.01 — Test suite — 195 tests, all passing
 [✅] 1.02 — Principle verification tested
 [✅] 1.03 — Safety flag detection tested
 [✅] 1.04 — Memory append-only enforcement confirmed
 [✅] 1.05 — Full five-step loop tested end to end
 [✅] 1.06 — Type hints added to all 7 modules
 [✅] 1.07 — Input sanitization layer in intake.py
-[✅] 1.08 — Edge case and sanitization tests — 108 base tests
+[✅] 1.08 — Edge case and sanitization tests
 [✅] 1.09 — CHANGELOG.md — full history documented
 [✅] 1.10 — .flake8 linting config
-[✅] 1.11 — GitHub Actions CI — green across Python 3.8–3.12
+[✅] 1.11 — GitHub Actions CI — green across Python 3.9–3.12
 [✅] 1.12 — Conformance tests — 16 tests, ratification complete
+[✅] 1.13 — Merkle chain tests — TestMerkleChainCore, 7 tests
 [✅] 2.03 — Input sanitization against injection attacks
 [✅] 2.05 — Rate limiting — core/ratelimit.py
 [✅] 2.06 — principles.hash protection — tests in place
-[✅] 2.07 — Dependency scanning — pip-audit in CI
+[✅] 2.07 — Dependency scanning — pip-audit in CI, zero vulnerabilities
+[✅] 2.09 — Session management — core/session.py, 17 tests
 [✅] 2.11 — Environment variable config — core/config.py
+[✅] 3.04 — API documentation — FastAPI /docs live
 [✅] 3.05 — CONTRIBUTING.md
+[✅] 3.06 — FAQ document — docs/FAQ.md
+[✅] 3.13 — GOVERNANCE.md — values protection, community governance
 [✅] 5.05 — Line endings protection
 [✅] NEW — CROSSOVER_CONTRACT_v1.0 sealed on GitHub
 [✅] NEW — CRE-SPEC-001 v0.6 sealed on GitHub
 [✅] NEW — Gist updated — all three document hashes recorded
+[✅] NEW — api/main.py — HTTP API server, five endpoints
+[✅] NEW — starlette CVE resolved — GHSA-7f5h-v6xp-fcq8
 
 RULE: 1.09A — Code, tests, and documentation must always agree.
 
-Tests: 136 passing across Python 3.8–3.12
+Tests: 195 passing across Python 3.9–3.12
 CI: green ✅
 Ratification: all 3 conditions met ✅
+API: live at /docs ✅
 
-Remaining items: 31
+Remaining items: 24
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REMAINING ITEMS
+
+SECURITY (complete before Stage 1 exit)
+  [ ] 2.01 — Database encryption — Python/application layer
+              Note: core/encryption.py exists. Integration and
+              tests still needed.
+  [ ] 2.02 — Modular authentication — full test coverage
+              Note: core/auth.py exists. Tests still needed.
+  [ ] 2.04 — Third-party security audit (before public launch)
+
+DOCUMENTATION
+  [ ] 3.01 — End-to-end setup test by a real person
+  [ ] 3.02 — Windows setup instructions verified
+  [ ] 3.03 — Raspberry Pi setup instructions verified
+
+LEGAL
+  [ ] 4.01 — Legal counsel engaged
+  [ ] 4.02 — Privacy policy
+  [ ] 4.03 — Terms of use
+
+COMPLIANCE
+  [ ] 5.01 — GDPR architecture (right to erasure vs append-only trail)
+  [ ] 5.02 — CCPA compliance review
+  [ ] 5.03 — Data retention policy
+  [ ] 5.04 — Consent management framework
+  [ ] 5.06 — Cookie and tracking policy (web interface added)
+  [ ] 5.07 — Data classification at intake (C3 from REVIEW_001)
+              Note: classification field exists in intake.py.
+              Needs formal compliance mapping document.
+  [ ] 5.08 — Safe messaging response text (C4 from REVIEW_001)
+              Note: CRISIS response text exists in core/config.py.
+              Needs formal AFSP/SAMHSA/WHO compliance review.
+
+GITHUB SECURITY ACTIONS (do immediately)
+  [ ] Enable signed commits (GPG)
+  [ ] Publish genesis block hash to Gist at first production deployment
+
+STAGE 1 EXIT CRITERIA STATUS
+  [ ] All CRITICAL checklist items complete — in progress
+  [ ] Security audit passed — not yet engaged
+  [ ] Legal foundation in place — not yet engaged
+  [ ] A stranger can deploy from README — FAQ + /docs significantly helps
+  [ ] All 28 threats with Open+Critical status mitigated or accepted
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
