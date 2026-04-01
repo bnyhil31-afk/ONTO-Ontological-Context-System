@@ -346,11 +346,11 @@ class EncryptionLayer:
     def _require_libraries(self) -> None:
         missing = []
         try:
-            import cryptography  # noqa: F401
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
         except ImportError:
             missing.append("cryptography")
         try:
-            import argon2  # noqa: F401
+            from argon2.low_level import hash_secret_raw, Type  # noqa: F401
         except ImportError:
             missing.append("argon2-cffi")
 
