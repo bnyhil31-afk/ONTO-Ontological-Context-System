@@ -16,7 +16,7 @@ If any test fails — something needs attention before shipping.
 ## What success looks like
 
 ```
-188 passed, 0 failed, 0 errors
+195 passed, 0 failed, 0 errors
 ```
 
 If you see anything different — something needs attention.
@@ -60,7 +60,7 @@ ERROR    — something unexpected happened
 At the end you will see a summary:
 
 ```
-188 passed in X.Xs
+195 passed in X.Xs
 ```
 
 ---
@@ -113,19 +113,20 @@ Results will look slightly different but test the same things.
 
 ## What each test file and class covers
 
-### tests/test_onto.py — Core system (108 tests)
+### tests/test_onto.py — Core system (115 tests)
 
-Class             | Tests | What it covers
-------------------|-------|-----------------------------------------------
-TestSmoke         |   4   | System boots, principles verify, memory initializes
-TestVerify        |  10   | Cryptographic hash protection of the principles
-TestMemory        |  15   | Permanent append-only audit trail
-TestIntake        |  22   | Input receiving, classification, safety detection
-TestContextualize |  12   | Living field and context building
-TestSurface       |  11   | Honest plain language output
-TestFullLoop      |   8   | All five steps working together end to end
-TestSanitization  |  14   | Input sanitization — dangerous character handling
-TestEdgeCases     |  12   | Unusual but real situations the system may encounter
+Class                 | Tests | What it covers
+----------------------|-------|-----------------------------------------------
+TestSmoke             |   4   | System boots, principles verify, memory initializes
+TestVerify            |  10   | Cryptographic hash protection of the principles
+TestMemory            |  15   | Permanent append-only audit trail
+TestMerkleChainCore   |   7   | Chain linking, tamper detection, verify_chain() contract
+TestIntake            |  22   | Input receiving, classification, safety detection
+TestContextualize     |  12   | Living field and context building
+TestSurface           |  11   | Honest plain language output
+TestFullLoop          |   8   | All five steps working together end to end
+TestSanitization      |  14   | Input sanitization — dangerous character handling
+TestEdgeCases         |  12   | Unusual but real situations the system may encounter
 
 ### tests/test_conformance.py — Crossover contract (16 tests)
 
