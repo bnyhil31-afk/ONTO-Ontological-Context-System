@@ -278,7 +278,7 @@ Read them before you submit anything.
 
 ## License
 
-MIT — Open. Free. For everyone. Always.
+LGPL-2.1 — Open core. Free to use. Modifications to the library must remain open.
 
 ---
 
