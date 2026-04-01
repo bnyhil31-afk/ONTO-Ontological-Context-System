@@ -458,6 +458,210 @@ class TestMemory(ONTOTestCase):
         """Reading from an empty database returns an empty list, not an error."""
         self.assertEqual(self._memory.read_all(), [])
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST: MERKLE CHAIN (item 1.13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestMerkleChain(ONTOTestCase):
+    """
+    Tests for the Merkle chain in modules/memory.py.
+
+    Every record in the audit trail stores the SHA-256 hash of the
+    previous record's content. This creates a cryptographically linked
+    chain. Any deletion, gap, or modification breaks the chain and is
+    detectable by verify_chain().
+
+    Plain English: The audit trail is not just append-only.
+    It is cryptographically chained. You cannot delete a record
+    without the chain proving something is missing.
+
+    This is item 1.13 from the pre-launch checklist.
+    Reference: REVIEW_001 Finding C2, CROSSOVER_CONTRACT_v1.0 §8.
+
+    Expected: 7 passed.
+    """
+
+    def test_genesis_record_has_no_chain_hash(self):
+        """
+        The first record in a chain has chain_hash=None.
+        There is no previous record to link to.
+        This is the chain's anchor — the genesis block.
+        """
+        self._memory.record(event_type="TEST", notes="genesis")
+        records = self._memory.read_all()
+        self.assertIsNone(
+            records[0]["chain_hash"],
+            "The first record must have chain_hash=None. "
+            "It has no predecessor to link to."
+        )
+
+    def test_second_record_has_chain_hash(self):
+        """
+        The second record must have a non-None chain_hash.
+        It links back to the first record, forming the chain.
+        """
+        self._memory.record(event_type="TEST", notes="first")
+        self._memory.record(event_type="TEST", notes="second")
+        records = self._memory.read_all()
+        self.assertIsNotNone(
+            records[1]["chain_hash"],
+            "The second record must have a chain_hash linking to the first. "
+            "A None chain_hash means the chain is broken."
+        )
+
+    def test_chain_hash_is_64_char_hex(self):
+        """
+        chain_hash is a valid SHA-256 hex string — exactly 64 characters,
+        all lowercase hexadecimal. Any other format is wrong.
+        """
+        self._memory.record(event_type="TEST", notes="first")
+        self._memory.record(event_type="TEST", notes="second")
+        records = self._memory.read_all()
+        chain_hash = records[1]["chain_hash"]
+
+        self.assertEqual(
+            len(chain_hash), 64,
+            f"chain_hash must be 64 characters. Got {len(chain_hash)}."
+        )
+        self.assertTrue(
+            all(c in "0123456789abcdef" for c in chain_hash),
+            "chain_hash must be lowercase hexadecimal. "
+            f"Got: {chain_hash}"
+        )
+
+    def test_chain_hash_links_to_previous_record(self):
+        """
+        The chain_hash of record N is the SHA-256 of record N-1's content.
+        This is the cryptographic link that makes the chain tamper-evident.
+
+        Content is: id, timestamp, event_type, input, context, output,
+        confidence, human_decision, notes, classification — serialised
+        as sorted JSON. chain_hash and signature_algorithm are excluded
+        to avoid circular dependency.
+        """
+        self._memory.record(event_type="FIRST", notes="genesis record")
+        self._memory.record(event_type="SECOND", notes="linked record")
+        records = self._memory.read_all()
+        first = records[0]
+
+        # Independently compute what the chain_hash of record 2 should be.
+        # This mirrors exactly what _hash_record_content() does in memory.py.
+        expected_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "id":             first["id"],
+                    "timestamp":      first["timestamp"],
+                    "event_type":     first["event_type"],
+                    "input":          first["input"],
+                    "context":        first["context"],
+                    "output":         first["output"],
+                    "confidence":     first["confidence"],
+                    "human_decision": first["human_decision"],
+                    "notes":          first["notes"],
+                    "classification": first["classification"],
+                },
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        self.assertEqual(
+            records[1]["chain_hash"],
+            expected_hash,
+            "Record 2's chain_hash must equal SHA-256 of record 1's content. "
+            "A mismatch means the chain computation is wrong."
+        )
+
+    def test_verify_chain_passes_for_intact_trail(self):
+        """
+        verify_chain() returns intact=True when all records are correctly
+        linked. A healthy audit trail always passes this check.
+        """
+        for i in range(5):
+            self._memory.record(event_type="TEST", notes=f"record {i}")
+
+        result = self._memory.verify_chain()
+        self.assertTrue(
+            result["intact"],
+            f"Chain must be intact after 5 normal writes. Gaps: {result['gaps']}"
+        )
+        self.assertEqual(result["total"], 5)
+        self.assertEqual(len(result["gaps"]), 0)
+
+    def test_verify_chain_detects_wrong_chain_hash(self):
+        """
+        verify_chain() returns intact=False when a record has an incorrect
+        chain_hash. This simulates what the verifier sees when a gap exists.
+
+        Method: write one valid record through the normal path, then insert
+        a second record directly via SQLite with a deliberately wrong
+        chain_hash. INSERT is not blocked by the append-only triggers
+        (only DELETE and UPDATE are prevented), so this bypasses the
+        module's compute_chain_hash() logic.
+
+        Plain English: If someone manages to insert a record with a
+        wrong chain_hash — or if any record is deleted leaving a gap —
+        verify_chain() must detect it.
+        If this fails: The audit trail's tamper evidence is broken. Critical bug.
+        """
+        self._memory.record(event_type="TEST", notes="valid genesis")
+
+        # Insert a second record with an intentionally wrong chain_hash.
+        # INSERT bypasses the UPDATE/DELETE triggers — this is intentional.
+        conn = sqlite3.connect(self.test_db)
+        conn.execute(
+            """
+            INSERT INTO events (
+                timestamp, event_type, notes,
+                chain_hash, signature_algorithm, classification
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2099-01-01T00:00:00+00:00",
+                "TEST",
+                "record with corrupted chain_hash",
+                "0" * 64,    # deliberately wrong — all zeros
+                "Ed25519",
+                0,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        result = self._memory.verify_chain()
+        self.assertFalse(
+            result["intact"],
+            "verify_chain() must return intact=False when a chain_hash is wrong. "
+            "Tampered or gap-bearing records must not pass verification."
+        )
+        self.assertGreater(
+            len(result["gaps"]), 0,
+            "verify_chain() must identify at least one gap when the chain is broken."
+        )
+
+    def test_verify_chain_result_has_required_fields(self):
+        """
+        verify_chain() returns a dict with the four required fields:
+        intact, total, gaps, first_record_hash.
+        Callers depend on this structure — changes are breaking changes.
+        """
+        self._memory.record(event_type="TEST")
+        result = self._memory.verify_chain()
+
+        for field in ["intact", "total", "gaps", "first_record_hash"]:
+            self.assertIn(
+                field, result,
+                f"verify_chain() result missing required field: '{field}'"
+            )
+
+        self.assertIsInstance(result["intact"], bool)
+        self.assertIsInstance(result["total"], int)
+        self.assertIsInstance(result["gaps"], list)
+        self.assertIsNotNone(
+            result["first_record_hash"],
+            "first_record_hash must not be None when records exist. "
+            "It is the genesis hash that can be published for public verification."
+        )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TEST: INTAKE
@@ -974,7 +1178,7 @@ class TestFullLoop(ONTOTestCase):
 if __name__ == "__main__":
     print("\nONTO Test Suite")
     print("=" * 60)
-    print("Expected result: 82 passed, 0 failed, 0 errors.")
+    print("Expected result: 89 passed, 0 failed, 0 errors.")
     print("If you see anything different — something needs attention.")
     print("=" * 60 + "\n")
     unittest.main(verbosity=2)
