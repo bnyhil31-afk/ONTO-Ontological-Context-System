@@ -21,6 +21,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Scan dependencies for vulnerabilities
+        run: |
+          python -m venv /tmp/pip-audit-env
+          /tmp/pip-audit-env/bin/pip install --quiet pip-audit
+          /tmp/pip-audit-env/bin/pip-audit -r requirements-test.txt --desc
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -75,10 +80,6 @@ jobs:
               sys.exit(1)
           print('[OK] Principles verified and intact.')
           "
-      - name: Scan dependencies for vulnerabilities
-        run: |
-          pip install pip-audit
-          pip-audit -r requirements-test.txt --desc
       - name: Run test suite
         run: |
           pytest tests/ -v --tb=short
