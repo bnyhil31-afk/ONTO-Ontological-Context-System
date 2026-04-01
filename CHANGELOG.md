@@ -6,6 +6,67 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Relationship Graph, Theoretical Foundation, Tests
+
+### Added
+
+- **`modules/graph.py`** — The relationship graph — the heart of ONTO.
+  Implements the weighted relationship graph that the entire system is
+  designed around. Nine research-backed design decisions incorporated
+  from a multi-domain research audit spanning cognitive science, graph
+  theory, NLP, philosophy, safety, and compliance:
+  power-law decay (Wixted 2004, Jost's Law 1897) replaces exponential
+  decay; spacing-effect reinforcement (Cepeda et al. 2006) replaces flat
+  increment; TF-IDF Size axis (Sparck Jones 1972) replaces raw frequency;
+  PPMI-approximation edge scoring (Bullinaria & Levy 2007); ACT-R fan
+  effect during traversal (Anderson 1983); RAKE-inspired concept
+  extraction (Rose et al. 2010); sensitive topic and crisis detection
+  wellbeing protection layer (Nolen-Hoeksema 1991, 2008) — crisis content
+  is never stored, sensitive content receives reduced reinforcement and
+  faster decay; wipe() implements GDPR Article 17 right to erasure; lazy
+  decay computes effective weight at read time rather than batching.
+  Graph schema: graph_nodes, graph_edges, graph_metadata tables in the
+  shared SQLite database. Migration-safe: ALTER TABLE ADD COLUMN for
+  upgrades. Stable UUID node identifiers for backend portability.
+
+- **`docs/GRAPH_THEORY_001.md`** — Permanent theoretical basis reference
+  for modules/graph.py. Records every design decision and its named
+  scientific source. Documents what is deferred to Stage 2 (Personalized
+  PageRank, full PPMI, spaCy NER, directed edges, per-user decay
+  calibration). Corrects the philosophical framing: ONTO is a cognitive
+  scaffold in the sense of Clark & Chalmers (1998) extended mind thesis —
+  not autopoietic.
+
+- **`tests/test_graph.py`** — Full test suite for modules/graph.py
+  (checklist items 1.14, 1.17, 2.12). 32 tests across 7 classes:
+  TestGraphInitialize (3), TestGraphRelate (10), TestGraphNavigate (7),
+  TestGraphDecay (4), TestGraphWipe (5), TestEffectiveWeight (3),
+  TestSpacingIncrement (3), TestConceptExtraction (3).
+  Safety-critical coverage: crisis content never stored (1.17).
+  GDPR coverage: wipe() records audit event, navigate() empty after
+  wipe (2.12).
+
+### Changed
+
+- **`main.py`** — Boot sequence extended to 4 steps. Step 3 initialises
+  and prunes the relationship graph (graph.initialize() + graph.decay())
+  before rebuilding the context field. The word-overlap fallback in
+  contextualize.py is no longer triggered — _GRAPH_AVAILABLE is True.
+  Every user input now writes real weighted edges to the graph.
+
+- **`docs/ONTO_PreLaunch_Checklist.txt`** — Updated to v9. Items 1.14,
+  1.16, 1.17, 2.02, 3.14 marked complete. 19 new items added across
+  sections 1–7 from the research audit. Test count updated to 227.
+  New Section 6 (Stage 2 preparation) added.
+
+- **`tests/README.md`** — Updated to reflect 227 total passing tests.
+  TestGraphInitialize, TestGraphRelate, TestGraphNavigate, TestGraphDecay,
+  TestGraphWipe, TestEffectiveWeight, TestSpacingIncrement,
+  TestConceptExtraction added to the class table.
+  TestAuthentication and TestEncryptionLayer entries added.
+
+---
+
 ## [Unreleased] — API Layer, Session Management, Merkle Chain Tests
 
 ### Added
