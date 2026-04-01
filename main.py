@@ -4,24 +4,51 @@ main.py
 The entry point. The start of every session.
 This is where everything comes together.
 
-Boot → Verify → Remember → Listen → Understand → Present → Checkpoint → Repeat
+Boot → Verify → Authenticate → Remember → Graph → Listen → Understand
+     → Present → Checkpoint → Repeat
 
 Plain English: Run this to start the system.
 Type anything. The system will understand, respond, and ask what to do next.
 Everything is recorded. Nothing is hidden.
 
 Run with:  python3 main.py
+
+Encryption (item 2.01):
+  When AUTH_REQUIRED=true and a passphrase is configured, the database
+  is kept encrypted on disk at all times. On boot, it is decrypted to
+  a session path in the same directory. On shutdown, it is re-encrypted
+  and the session file is removed. Development mode (the default) skips
+  this entirely — no passphrase required, no encryption.
 """
 
 import os
+import shutil
+import sqlite3
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from core.auth import auth_manager
+from core.config import config
+from core.encryption import encryption
 from core.verify import verify_principles
-from modules import memory, intake, contextualize, surface, checkpoint, graph
+from modules import checkpoint, contextualize, graph, intake, memory, surface
+
+
+# ---------------------------------------------------------------------------
+# ENCRYPTION SESSION STATE
+# ---------------------------------------------------------------------------
+# These three module-level variables track whether this session is
+# running in encrypted mode and where the session files live.
+#
+# Development mode (default): all three stay at their initial values
+# and no encryption operations are performed.
+# ---------------------------------------------------------------------------
+
+_encryption_active: bool = False
+_session_db_path: Optional[str] = None    # plaintext path used during session
+_original_db_path: Optional[str] = None  # permanent path on disk (encrypted)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,43 +62,92 @@ def boot() -> None:
 
     Steps:
         1. Verify the principles are intact
-        2. Initialize permanent memory
-        3. Rebuild the context field from past sessions
+        2. Authenticate the operator (if configured)
+        3. Initialize permanent memory (decrypt if authenticated)
+        4. Initialize the relationship graph
+        5. Rebuild the context field from past sessions
     """
+    global _encryption_active, _session_db_path, _original_db_path
+
     print("\n" + "═" * 60)
     print("  ONTO — Ontological Context System")
     print("  Version 1.0 — MVP")
     print("═" * 60)
 
-    # 1. Verify the principles — always first
-    print("\n  [1/3] Verifying principles...")
+    # 1. Verify the principles — always first, before anything else.
+    #    If the principles file has been altered, the system stops here.
+    print("\n  [1/5] Verifying principles...")
     verify_principles()
     print("        Principles intact. ✓")
 
-    # 2. Initialize memory
-    print("  [2/3] Initializing memory...")
+    # 2. Authenticate.
+    #    Development mode: auth_manager.authenticate() returns success
+    #    automatically when AUTH_REQUIRED=false and no auth is configured.
+    #    Production mode: displays the verification phrase, prompts for
+    #    passphrase, verifies with Argon2id + constant-time comparison.
+    print("  [2/5] Authenticating...")
+    auth_result = auth_manager.authenticate()
+
+    if not auth_result.success:
+        print(f"\n  Authentication failed: {auth_result.reason}\n")
+        sys.exit(1)
+
+    if auth_manager.is_configured():
+        print(f"        Authenticated as {auth_result.identity}. ✓")
+    else:
+        print("        Development mode — no authentication configured. ✓")
+
+    # 3. Initialize memory.
+    #    If a passphrase was returned, we are in production mode:
+    #      a. Derive the AES-256-GCM key from the passphrase (Argon2id).
+    #      b. Decrypt the database from its permanent encrypted path to
+    #         a session-specific plaintext path.
+    #      c. Redirect memory.DB_PATH to the session path — graph.py
+    #         follows automatically since it uses the same module var.
+    #      d. Clear the passphrase immediately after key derivation —
+    #         the key lives in memory; the passphrase does not.
+    print("  [3/5] Initializing memory...")
+
+    if auth_result.passphrase:
+        _original_db_path = config.DB_PATH
+        _session_db_path = _original_db_path + ".session"
+
+        encryption.initialize(auth_result.passphrase, _original_db_path)
+        auth_result.clear_passphrase()  # clear as soon as the key is derived
+
+        if os.path.exists(_original_db_path):
+            try:
+                decrypted = encryption.decrypt_database(
+                    _original_db_path, _session_db_path
+                )
+                if not decrypted:
+                    # DB exists but is not yet encrypted — first session
+                    # after enabling auth on an existing installation.
+                    shutil.copy2(_original_db_path, _session_db_path)
+            except Exception:
+                # Decryption failed (corrupted file, wrong key, etc).
+                # Start with a fresh session DB rather than crashing.
+                pass
+
+        memory.DB_PATH = _session_db_path
+        _encryption_active = True
+
     memory.initialize()
     print("        Memory ready. ✓")
 
-    # 3. Initialize the relationship graph
-    print("  [3/4] Initializing relationship graph...")
+    # 4. Initialize the relationship graph.
+    #    graph.py uses memory.DB_PATH, so it follows the session path
+    #    automatically if encryption is active.
+    print("  [4/5] Initializing relationship graph...")
     graph.initialize()
     graph.decay()
     print("        Graph ready. ✓")
 
-    # 4. Rebuild the context field from past sessions
-    print("  [4/4] Rebuilding context field...")
+    # 5. Rebuild the context field from past sessions.
+    print("  [5/5] Rebuilding context field...")
     field_size: int = contextualize.load_from_memory()
     print(f"        Field restored. {field_size} past entries loaded. ✓")
-```
 
----
-
-Commit message for both files:
-```
-Add tests/test_graph.py (32 tests, checklist 1.14) and bootstrap graph in main.py (checklist 1.16)
-
-    # Record boot event
     memory.record(
         event_type="BOOT",
         notes=f"System started. Field size: {field_size}"
@@ -90,8 +166,8 @@ Add tests/test_graph.py (32 tests, checklist 1.14) and bootstrap graph in main.p
 def run() -> None:
     """
     The main loop — the dance between human and system.
-    Receives input → understands it → presents it → checks with human → repeats.
-    Runs until the human chooses to stop.
+    Receives input → understands it → presents it → checks with human
+    → repeats. Runs until the human chooses to stop.
     """
     while True:
         try:
@@ -103,7 +179,8 @@ def run() -> None:
         if not raw:
             continue
 
-        # ── Built-in commands ─────────────────────────────────────────────────
+        # ── Built-in commands ─────────────────────────────────────────
+
         if raw.lower() in ("quit", "exit", "q"):
             _shutdown()
             break
@@ -116,7 +193,7 @@ def run() -> None:
             _show_help()
             continue
 
-        # ── The five-step loop ────────────────────────────────────────────────
+        # ── The five-step loop ────────────────────────────────────────
 
         # Step 1: Intake
         package: Dict[str, Any] = intake.receive(raw)
@@ -172,8 +249,62 @@ def _show_help() -> None:
 
 
 def _shutdown() -> None:
-    """Records a clean shutdown and exits gracefully."""
+    """
+    Records a clean shutdown and exits gracefully.
+
+    If encryption is active:
+      1. Checkpoint WAL into the main DB file.
+      2. Encrypt the session DB in place.
+      3. Move the encrypted file to the permanent location.
+      4. Remove WAL sidecar files.
+      5. Clear the encryption key from memory.
+
+    This ensures the database is never left unencrypted on disk
+    between sessions. If any step fails, the session file is
+    preserved as a plaintext backup with a warning.
+    """
+    global _encryption_active, _session_db_path, _original_db_path
+
     memory.record(event_type="HALT", notes="Session ended normally.")
+
+    if _encryption_active and _session_db_path and _original_db_path:
+        print("  Saving and encrypting session...")
+        try:
+            # Checkpoint: merge WAL into the main DB file so the
+            # plaintext file is self-contained before we encrypt it.
+            conn = sqlite3.connect(_session_db_path)
+            conn.execute("PRAGMA wal_checkpoint(FULL)")
+            conn.close()
+
+            # Encrypt the session file in place.
+            encryption.encrypt_database(_session_db_path)
+
+            # Move the encrypted session file to the permanent location.
+            shutil.move(_session_db_path, _original_db_path)
+
+            # Remove WAL sidecar files — they are no longer needed.
+            for _p in [
+                _session_db_path + "-wal",
+                _session_db_path + "-shm",
+                _original_db_path + "-wal",
+                _original_db_path + "-shm",
+            ]:
+                if os.path.exists(_p):
+                    os.remove(_p)
+
+            print("        Encrypted and saved. ✓")
+
+        except Exception as _exc:
+            print(f"\n  Warning: encryption error on shutdown.")
+            print(f"  Details: {_exc}")
+            print(f"  Session data preserved at: {_session_db_path}")
+            print(f"  Re-run the system to retry encryption.\n")
+
+        finally:
+            # Always clear the key — even if encryption failed.
+            encryption.clear_key()
+            _encryption_active = False
+
     print("\n  Session ended. All records saved.\n")
 
 
