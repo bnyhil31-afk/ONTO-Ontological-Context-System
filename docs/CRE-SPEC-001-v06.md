@@ -1066,7 +1066,7 @@ Network topology is monitored for concentration signals. Concentration above def
 
 CRE is an open protocol specification — a technical standard, not a product. Like HTTP or TCP/IP, it defines how systems communicate. Compliant implementations may be built by any person or organization under the MIT License.
 
-ONTO is a reference implementation of a CRE-compliant node, also MIT licensed.
+ONTO is a reference implementation of a CRE-compliant node, also licensed under LGPL-2.1.
 
 ### 33.2 Current legal posture
 
@@ -1078,7 +1078,7 @@ The following items are flagged **[LEGAL REVIEW REQUIRED]** and require counsel 
 
 1. **[LEGAL REVIEW REQUIRED]** Working group incorporation — recommended entity type, jurisdiction, governance structure
 2. **[LEGAL REVIEW REQUIRED]** Contributor License Agreement (CLA) — ensuring contributions can be properly licensed and the project protected from IP claims
-3. **[LEGAL REVIEW REQUIRED]** Reference implementation license — confirming MIT is appropriate given the protocol's scope and potential commercial applications
+3. **[LEGAL REVIEW REQUIRED]** Reference implementation license — LGPL-2.1 selected; counsel to confirm correct application given the protocol's scope, cryptographic components, and potential high-stakes deployment domains
 4. **[LEGAL REVIEW REQUIRED]** Liability limitation — what disclaimers are required given the protocol's applicability to high-stakes domains (health, legal, financial)
 5. **[LEGAL REVIEW REQUIRED]** Export controls — whether any cryptographic components require export classification under EAR/ITAR
 6. **[LEGAL REVIEW REQUIRED]** Data Processing Agreement template — for node operators acting as data processors under GDPR
