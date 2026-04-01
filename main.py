@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.verify import verify_principles
-from modules import memory, intake, contextualize, surface, checkpoint
+from modules import memory, intake, contextualize, surface, checkpoint, graph
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,10 +53,23 @@ def boot() -> None:
     memory.initialize()
     print("        Memory ready. ✓")
 
-    # 3. Rebuild the field from past sessions
-    print("  [3/3] Rebuilding context field...")
+    # 3. Initialize the relationship graph
+    print("  [3/4] Initializing relationship graph...")
+    graph.initialize()
+    graph.decay()
+    print("        Graph ready. ✓")
+
+    # 4. Rebuild the context field from past sessions
+    print("  [4/4] Rebuilding context field...")
     field_size: int = contextualize.load_from_memory()
     print(f"        Field restored. {field_size} past entries loaded. ✓")
+```
+
+---
+
+Commit message for both files:
+```
+Add tests/test_graph.py (32 tests, checklist 1.14) and bootstrap graph in main.py (checklist 1.16)
 
     # Record boot event
     memory.record(
