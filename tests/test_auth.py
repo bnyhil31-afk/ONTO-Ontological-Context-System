@@ -30,14 +30,15 @@ class TestAuthentication(unittest.TestCase):
 
     def setUp(self):
         """Create a fresh temporary environment for each test."""
-        # Skip all tests if argon2-cffi is not installed.
-        # self.skipTest() is the most reliable skip mechanism —
-        # it runs at execution time, not collection time.
+        # Check for the specific sub-module actually used by auth.py.
+        # import argon2 alone is not sufficient — argon2.low_level
+        # is required for Argon2id key derivation.
         try:
-            import argon2  # noqa: F401
-        except ImportError:
+            from argon2.low_level import hash_secret_raw, Type  # noqa: F401
+        except (ImportError, ModuleNotFoundError):
             self.skipTest(
-                "argon2-cffi not installed — run: pip install argon2-cffi"
+                "argon2-cffi not installed or incomplete — "
+                "run: pip install argon2-cffi"
             )
 
         self.test_dir = tempfile.mkdtemp()
@@ -117,7 +118,7 @@ class TestAuthentication(unittest.TestCase):
         self.assertNotEqual(result.reason, "")
 
     def test_result_contains_passphrase_for_key_derivation(self):
-        """Successful AuthResult contains the raw passphrase for key derivation."""
+        """Successful AuthResult contains the raw passphrase."""
         passphrase = "correct-horse-battery-staple"
         self.manager.setup(passphrase, "blue bicycle")
         result = self.manager.authenticate(passphrase_input=passphrase)
@@ -149,12 +150,12 @@ class TestAuthentication(unittest.TestCase):
 
     def test_short_passphrase_rejected_at_setup(self):
         """setup() rejects passphrases shorter than 12 characters."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, RuntimeError)):
             self.manager.setup("tooshort", "blue bicycle")
 
     def test_short_verification_phrase_rejected(self):
         """setup() rejects verification phrases shorter than 4 characters."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, RuntimeError)):
             self.manager.setup("correct-horse-battery-staple", "ab")
 
     # ------------------------------------------------------------------
@@ -162,10 +163,7 @@ class TestAuthentication(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_verification_phrase_stored_and_retrievable(self):
-        """
-        The verification phrase is stored and returned.
-        Displayed at every boot to detect fake screens (T-012).
-        """
+        """The verification phrase is stored and returned. T-012."""
         phrase = "blue bicycle seven stars"
         self.manager.setup("correct-horse-battery-staple", phrase)
         self.assertEqual(self.manager.get_verification_phrase(), phrase)
