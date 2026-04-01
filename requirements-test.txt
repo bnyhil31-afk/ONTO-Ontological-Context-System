@@ -12,6 +12,13 @@ pytest-cov>=4.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.27.0
 
+# Starlette — pinned explicitly to avoid GHSA-7f5h-v6xp-fcq8 (ReDoS in
+# Range header parsing). Starlette is a FastAPI dependency; this pin
+# ensures pip-audit never resolves a vulnerable version.
+# Note: starlette>=0.45.3 requires Python 3.9+. Python 3.8 is EOL
+# (October 2024) and has been removed from the CI matrix.
+starlette>=0.45.3
+
 # HTTP client — required by FastAPI TestClient for API tests
 httpx>=0.27.0
 
