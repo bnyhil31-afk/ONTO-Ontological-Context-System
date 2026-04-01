@@ -164,8 +164,9 @@ All contributions are welcome. Before contributing:
 4. Open an issue before starting significant work — coordination saves
    everyone time.
 
-All contributions are made under the MIT license. By contributing, you
-agree that your contribution may be used under the project's license.
+All contributions are made under the GNU Lesser General Public License 
+v2.1 (LGPL-2.1). By contributing, you agree that your contribution may 
+be used under the project's license.
 
 ---
 
@@ -191,9 +192,10 @@ is ready, not on a calendar.
 This project is currently volunteer-maintained. If you find it valuable,
 consider contributing your time, expertise, or code.
 
-Commercial deployments that build on ONTO and CRE are welcome and
-encouraged under the MIT license. We ask — but do not require — that
-commercial users contribute improvements back to the project.
+Commercial deployments that build on ONTO and CRE are welcome and 
+encouraged under LGPL-2.1. Modifications to the core library must be 
+shared back under the same license. Applications that use ONTO without 
+modifying it have no such obligation.
 
 ---
 
