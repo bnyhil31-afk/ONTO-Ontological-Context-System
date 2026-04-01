@@ -396,6 +396,140 @@ of failure are preserved in the audit trail.
 
 ---
 
+---
+
+## modules/graph.py
+
+The relationship graph — the heart of ONTO. Implements RELATE and
+NAVIGATE as real graph operations backed by SQLite.
+
+Import the public functions:
+
+```python
+from modules import graph
+```
+
+All functions are thread-safe and fail gracefully — none raises on
+bad input or missing data.
+
+---
+
+### `graph.initialize() → None`
+
+Create the `graph_nodes`, `graph_edges`, and `graph_metadata` tables
+and their indexes. Apply WAL mode and performance pragmas. Fully
+idempotent — safe to call at every boot. Also performs schema migration
+for existing databases (adds `inputs_seen` and `is_sensitive` columns
+if they do not exist).
+
+Call after `memory.initialize()` at boot.
+
+---
+
+### `graph.relate(package) → dict`
+
+Ingest an intake package. Extract concepts. Write weighted co-occurrence
+edges to the graph.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `package` | `dict` | Intake package. Must contain `"raw"` or `"clean"`. |
+
+**Returns:**
+```json
+{
+  "concepts":           ["list", "of", "extracted", "concepts"],
+  "nodes_created":      3,
+  "nodes_reinforced":   0,
+  "edges_created":      3,
+  "edges_reinforced":   0,
+  "crisis_detected":    false,
+  "sensitive_detected": false
+}
+```
+
+If `crisis_detected` is `True`, nothing was written to the graph.
+The caller must surface crisis resources immediately.
+
+---
+
+### `graph.navigate(text, include_sensitive=False) → list[dict]`
+
+Traverse the graph from concepts in `text`. Return a ranked list of
+related context, sorted by `effective_weight` descending.
+
+Uses BFS at depth 2 with ACT-R fan effect. Effective weight applies
+all three governing axes plus PPMI approximation and fan dilution.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `text` | `str` | required | Query text. |
+| `include_sensitive` | `bool` | `False` | Include sensitive edges. |
+
+**Each result dict:**
+```json
+{
+  "concept":          "machine learning",
+  "effective_weight": 0.7234,
+  "times_seen":       5,
+  "inputs_seen":      4,
+  "source":           "graph",
+  "days_since":       1.23,
+  "complexity":       3,
+  "is_sensitive":     false
+}
+```
+
+| Field | Description |
+|---|---|
+| `effective_weight` | 0.0–1.0. Distance × Size × Complexity × PPMI × Fan. |
+| `inputs_seen` | Distinct inputs mentioning this concept. IDF denominator. |
+| `days_since` | Days since edge was last reinforced. |
+| `complexity` | Edge degree of this node. |
+| `is_sensitive` | True if concept is in the sensitive set. |
+
+Returns `[]` if text is empty or no seed concepts exist in the graph.
+
+---
+
+### `graph.decay() → dict`
+
+Prune edges whose effective weight has fallen below `PRUNE_THRESHOLD`.
+Remove orphaned nodes. Call at boot after `graph.initialize()`.
+
+Stored weights are not updated — effective weight is computed lazily
+at read time. Sensitive edges decay faster (exponent × 1.4).
+
+**Returns:** `{"edges_pruned": int, "nodes_pruned": int}`
+
+---
+
+### `graph.wipe() → dict`
+
+Delete the entire relationship graph. Records a `GRAPH_WIPE` audit event.
+
+**Legal basis:** GDPR Article 17 — right to erasure.
+
+**Returns:** `{"nodes_deleted": int, "edges_deleted": int}`
+
+---
+
+### Configuration
+
+| Env var | Default | Description |
+|---|---|---|
+| `ONTO_GRAPH_DECAY_EXPONENT` | `0.5` | Power-law decay exponent (ACT-R standard). |
+| `ONTO_GRAPH_PRUNE_THRESHOLD` | `0.05` | Minimum effective weight before pruning. |
+| `ONTO_GRAPH_MAX_RESULTS` | `20` | Maximum results from `navigate()`. |
+| `ONTO_GRAPH_MAX_DEPTH` | `2` | BFS depth. Validated by Balota & Lorch (1986). |
+| `ONTO_GRAPH_MAX_CONCEPTS` | `15` | Max concepts per input (limits edge explosion). |
+| `ONTO_GRAPH_BASE_REINFORCEMENT` | `0.08` | Base edge weight increment. |
+| `ONTO_GRAPH_SENSITIVE_REINFORCEMENT` | `0.02` | Reduced increment for sensitive edges. |
+
+See `docs/GRAPH_THEORY_001.md` for the complete theoretical basis.
+
+---
+
 ## Extending ONTO
 
 Every core module is designed as a swappable component. The swap
