@@ -30,9 +30,16 @@ import sys
 import tempfile
 import unittest
 
+try:
+    import argon2  # noqa: F401
+    ARGON2_AVAILABLE = True
+except ImportError:
+    ARGON2_AVAILABLE = False
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+@unittest.skipIf(not ARGON2_AVAILABLE, "argon2-cffi not installed — run: pip install argon2-cffi")
 class TestAuthentication(unittest.TestCase):
     """
     Tests for core/auth.py — the authentication layer.
