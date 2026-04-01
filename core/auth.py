@@ -37,6 +37,7 @@ Usage:
 """
 
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -412,7 +413,7 @@ class LocalAuthManager:
         Constant-time string comparison.
         Prevents timing attacks that could reveal hash length.
         """
-        return hashlib.compare_digest(
+        return hmac.compare_digest(
             a.encode("utf-8"),
             b.encode("utf-8")
         )
