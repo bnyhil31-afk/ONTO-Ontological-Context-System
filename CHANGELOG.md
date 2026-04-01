@@ -6,6 +6,43 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — License Update, Copyright Notice, IP Protection
+
+### Changed
+
+- **License** — Updated from MIT to GNU Lesser General Public License
+  v2.1 (LGPL-2.1), version-locked (not "or later"). LGPL-2.1 requires
+  that modifications to ONTO's source code be shared back under the same
+  license, while permitting use in proprietary applications built on top
+  of ONTO without modification. This closes the "fork, remove principles,
+  ship proprietary" attack vector that MIT left open, and preserves the
+  ability to pursue patent protection for the core three-axis contextual
+  reasoning architecture. The LICENSE file has been updated. The NOTICE
+  file has been added. All documentation references to "MIT License" have
+  been corrected to "LGPL-2.1".
+
+- **`docs/ONTO_Preservation_Document.txt`** — Updated to v1.1. Corrected
+  two references to "MIT license" in Part I and Part V to reflect the
+  current LGPL-2.1 license. Corrected repository URL from the legacy
+  Hello-World URL to the current ONTO-Ontological-Context-System URL.
+
+- **`docs/TERMS_OF_USE.md`** — Updated to v1.1. Corrected all references
+  to "MIT License" to "LGPL-2.1". Updated Section 3 to clarify that
+  modifications to the library must be shared back. Updated Section 11
+  to accurately describe LGPL-2.1 terms. Added patent pending notice.
+
+### Added
+
+- **`NOTICE`** — Copyright assertion and intellectual property notice.
+  Asserts copyright ownership. Identifies the patentable IP in the
+  three-axis contextual reasoning architecture, wellbeing protection
+  layer, self-preserving node design, and SOMA integration concept.
+  Includes trademark notice for the ONTO name and identity. Lists
+  third-party component licenses. Replace [YOUR LEGAL NAME] with your
+  full legal name before any public distribution.
+
+---
+
 ## [Unreleased] — Relationship Graph, Theoretical Foundation, Tests
 
 ### Added
