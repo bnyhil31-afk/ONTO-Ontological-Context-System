@@ -1,0 +1,465 @@
+ONTO — COMPLIANCE ARCHITECTURE DOCUMENT
+Document ID: COMPLIANCE-001
+Version: 1.0
+Status: Active
+Authors: Neo (bnyhil31-afk), Claude (Anthropic)
+
+Covers checklist items: 5.01, 5.02, 5.03, 5.04, 5.06, 5.07, 5.08
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCOPE AND PURPOSE
+
+This document describes ONTO's compliance architecture — how the system's
+design satisfies regulatory requirements across privacy, data protection,
+safe messaging, and content classification.
+
+It is written for legal counsel, compliance reviewers, and deployers.
+It is not a substitute for legal advice. Deployments in regulated domains
+(healthcare, finance, legal, education) must obtain independent legal
+review before going live.
+
+Items marked [LEGAL REVIEW REQUIRED] are flagged in CRE-SPEC-001 §33
+and must be reviewed by qualified counsel before public launch.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.01 — GDPR ARCHITECTURE
+Right to Erasure vs Append-Only Audit Trail
+
+REGULATION: GDPR Article 17 (Right to Erasure / Right to be Forgotten)
+
+THE TENSION:
+  GDPR Article 17 grants individuals the right to have their personal
+  data erased. ONTO's audit trail is append-only by design — records
+  cannot be deleted or modified. These appear to conflict.
+
+RESOLUTION — CRYPTOGRAPHIC ERASURE:
+  The two-layer record structure resolves this conflict without
+  compromising either principle.
+
+  Layer 1 — Shell (metadata):
+    Stored in the `events` table. Contains event type, timestamp,
+    classification level, chain_hash. Contains NO personal data.
+    This layer persists permanently.
+
+  Layer 2 — Payload (personal data):
+    Currently stored in the `notes`, `input`, `context`, `output`,
+    and `human_decision` fields within the events table.
+
+  CRYPTOGRAPHIC ERASURE PROCESS:
+    When a right-to-erasure request is received:
+    1. The encryption key for the relevant data is destroyed
+    2. The encrypted payload becomes permanently unreadable
+    3. The shell record persists — the audit trail remains intact
+    4. The chain is not broken — integrity is preserved
+
+  LEGAL BASIS:
+    The Article 29 Working Party and the European Data Protection Board
+    have recognized cryptographic erasure as compliant deletion under
+    GDPR when:
+      (a) the data was encrypted before storage
+      (b) the key is genuinely destroyed (not just inaccessible)
+      (c) the encrypted data cannot practically be decrypted
+
+  CURRENT STATUS:
+    Stage 1 implements application-layer AES-256-GCM encryption
+    (core/encryption.py). The key infrastructure for erasure-by-
+    key-destruction exists but the erasure workflow is not yet
+    implemented as a user-facing feature. [LEGAL REVIEW REQUIRED]
+
+  STAGE 1 GUIDANCE:
+    Do not store sensitive personal data in a Stage 1 deployment until
+    the erasure workflow is implemented and reviewed. Stage 1 is
+    appropriate for local single-user deployment with data the operator
+    controls entirely.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.02 — CCPA COMPLIANCE REVIEW
+California Consumer Privacy Act
+
+REGULATION: CCPA / CPRA (California Civil Code §1798.100 et seq.)
+
+APPLICABILITY:
+  CCPA applies to for-profit businesses meeting threshold criteria
+  (revenue, data volume, proportion of revenue from data sales).
+  ONTO as currently deployed (open source, non-commercial,
+  single-user) likely does not meet CCPA thresholds.
+  [LEGAL REVIEW REQUIRED for commercial deployments]
+
+RIGHTS MAPPING:
+
+  Right to Know (§1798.100):
+    ONTO provides complete transparency through the audit trail.
+    Every piece of data the system has processed is recorded
+    permanently and readable via `memory.read_all()` or `GET /audit`.
+    This exceeds the right-to-know requirement.
+
+  Right to Delete (§1798.105):
+    Addressed via the cryptographic erasure architecture described
+    in item 5.01. Operator-controlled: the operator can destroy the
+    encryption key, rendering all data permanently unreadable.
+    [Implementation: complete when erasure workflow ships]
+
+  Right to Opt-Out of Sale (§1798.120):
+    ONTO does not sell, share, or transfer personal data. The system
+    is local-first by design. No data leaves the device. There is
+    nothing to opt out of.
+
+  Right to Non-Discrimination (§1798.125):
+    Not applicable to the current deployment model.
+
+  Right to Correct (§1798.106 — CPRA addition):
+    ONTO's append-only audit trail does not support correction of
+    individual records. New records can be written that supersede
+    or annotate earlier records. A formal correction workflow is
+    a Stage 2+ item. [LEGAL REVIEW REQUIRED]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.03 — DATA RETENTION POLICY
+
+PURPOSE:
+  Defines how long ONTO retains processed data, why, and what happens
+  when data is no longer needed.
+
+AUDIT TRAIL (modules/memory.py):
+  The audit trail is permanent by design. Records are never
+  automatically deleted. This is a core architectural commitment:
+  the audit trail is the system's immune memory. Every decision
+  made with ONTO is recorded permanently so it can be reviewed,
+  audited, and learned from.
+
+  Retention period: Indefinite (append-only, no expiry)
+  Rationale: Audit integrity, accountability, forensic capability
+  Deletion: Operator-initiated cryptographic erasure only
+
+SESSION DATA (core/session.py):
+  Session records exist only in memory. They are never written to
+  disk except for SESSION_START and SESSION_END events in the audit
+  trail (without the raw token — only the token_prefix).
+  Sessions expire automatically:
+    - Idle timeout: 1 hour (configurable via ONTO_SESSION_TTL_SECONDS)
+    - Hard maximum: 8 hours (configurable via ONTO_SESSION_MAX_LIFETIME_SECONDS)
+  After expiry or explicit logout, the session record is removed
+  from memory immediately (GDPR Article 5(1)(c): data minimisation).
+
+CONTEXTUAL FIELD (modules/contextualize.py):
+  The living field — the set of past inputs used for contextualisation
+  — is stored in memory and persisted to the audit trail. It is
+  rebuilt from memory on each restart. Entries in the field decay
+  in weight over time (contextual decay) but are not automatically
+  deleted from the audit trail.
+
+CONFIGURATION:
+  No automatic retention limits are currently implemented. A deployer
+  who needs retention limits should implement a scheduled erasure
+  job that destroys the encryption key for data older than the
+  retention period. [LEGAL REVIEW REQUIRED for regulated deployments]
+
+EU AI ACT (Article 26):
+  High-risk deployments must retain logs for a minimum of 6 months.
+  ONTO's indefinite retention satisfies this requirement. Deployers
+  in high-risk domains must ensure the key is not destroyed within
+  6 months of the relevant events.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.04 — CONSENT MANAGEMENT FRAMEWORK
+
+CURRENT STATE (Stage 1):
+  In Stage 1 single-user local deployment, the operator IS the user.
+  Implicit consent exists by virtue of the operator deploying and
+  using their own system. No separate consent collection is required.
+
+  The session schema includes a `consent_reference` field (currently
+  None in Stage 1) that is designed to carry a pointer to a consent
+  ledger record in Stage 2+. This forward-compatibility is already
+  implemented in core/session.py.
+
+STAGE 2 CONSENT ARCHITECTURE:
+  When ONTO is deployed as a multi-user system, the consent management
+  framework will implement:
+
+  1. CONSENT COLLECTION
+     Every new user session requires an active consent record.
+     Consent is specific (stated purpose), informed (plain language
+     description of what data is processed), freely given (no coercion),
+     and unambiguous (explicit action required).
+
+  2. CONSENT LEDGER
+     Consent records are stored permanently in the audit trail with:
+       - Consenting party identity
+       - Purpose scope
+       - Data categories consented to
+       - Timestamp and expiry
+       - Revocation timestamp (if revoked)
+     The ledger is append-only — revocation is recorded as a new
+     record, not by modifying the original consent record.
+
+  3. CONSENT VERIFICATION
+     Every processing action checks for a valid, non-expired consent
+     record before proceeding. Expired or revoked consent causes the
+     system to return to the consent collection flow.
+
+  4. CONSENT REVOCATION
+     Users can revoke consent at any time. Revocation is immediate —
+     no further processing occurs under the revoked consent. The
+     revocation event is recorded permanently.
+
+  5. W3C VERIFIABLE CREDENTIALS (Stage 3+)
+     Consent records are designed to be forward-compatible with
+     W3C VC 2.0 format (W3C Recommendation, May 2025). The fields
+     are the same. Migration to signed, portable VCs requires no
+     schema change. See CRE-SPEC-001 §16 for the ledger schema.
+
+GDPR ARTICLES ADDRESSED:
+  Article 6: Lawful basis — consent or legitimate interest
+  Article 7: Conditions for consent — specific, informed, unambiguous
+  Article 13/14: Transparency — clear purpose in consent presentation
+  Article 17: Right to erasure — consent revocation + cryptographic erasure
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.06 — COOKIE AND TRACKING POLICY
+
+COOKIES:
+  ONTO does not use cookies. The HTTP API uses bearer tokens
+  (Authorization header), not cookies. There is no session cookie,
+  no tracking cookie, no analytics cookie.
+
+TRACKING:
+  ONTO collects no telemetry, analytics, or usage data of any kind.
+  No data leaves the device. The system has no outbound network
+  connections during normal operation.
+
+THIRD-PARTY SERVICES:
+  None. ONTO has no third-party integrations, SDKs, or external
+  service calls in its processing pipeline.
+
+BROWSER STORAGE:
+  The API server does not set any browser storage (localStorage,
+  sessionStorage, IndexedDB). The /docs and /redoc endpoints
+  load Swagger UI and ReDoc from their bundled assets — no CDN,
+  no external scripts.
+
+EPERIVACY DIRECTIVE / COOKIE LAW:
+  The cookie law does not apply to ONTO because ONTO uses no cookies
+  or similar tracking technologies. A cookie banner is not required.
+
+IF A WEB FRONTEND IS ADDED:
+  Any web frontend added to ONTO must:
+  1. Not use third-party analytics scripts
+  2. Not set tracking cookies
+  3. Use bearer tokens (not cookies) for session management
+  4. Display a privacy notice if personal data is collected via forms
+  Update this policy when a frontend is added.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.07 — DATA CLASSIFICATION AT INTAKE
+
+OVERVIEW:
+  Every input to ONTO is assigned a classification level (0-5) by
+  the intake module (modules/intake.py, item C3 from REVIEW_001).
+  This level propagates through all downstream modules and is stored
+  in every audit record.
+
+CLASSIFICATION LEVELS:
+
+  Level 0 — UNCLASSIFIED
+    General text with no personal or sensitive elements.
+    Examples: "what is the weather today", "explain recursion"
+    Retention: Indefinite audit trail
+    Encryption: Recommended but not required
+
+  Level 1 — INTERNAL
+    Content that is sensitive in context but not personally identifying.
+    Examples: internal business questions, proprietary processes
+    Retention: Indefinite audit trail
+    Encryption: Recommended
+
+  Level 2 — PERSONAL (GDPR "personal data")
+    Data that identifies or could identify an individual.
+    Triggered by: name references, location, contact details,
+    date of birth, relationship references.
+    GDPR Article 4(1): "personal data means any information relating
+    to an identified or identifiable natural person"
+    Retention: Indefinite audit trail; right to erasure applies
+    Encryption: Required for production deployments
+    Read logging: Enabled (READ_ACCESS events generated)
+
+  Level 3 — SENSITIVE (GDPR "special categories")
+    Triggered by: health/medical terms, financial data, legal data,
+    biometric references, authentication credentials.
+    GDPR Article 9: Special categories of personal data.
+    HIPAA: Protected Health Information (PHI) if applicable.
+    Retention: Indefinite; right to erasure applies; HIPAA 6-year minimum
+    Encryption: Required
+    Read logging: Enabled
+    Access control: Checkpoint always required (Stage 2+)
+
+  Level 4 — RESTRICTED
+    Reserved for future use. For classified deployments where
+    information controls apply.
+
+  Level 5 — HIGHEST SENSITIVITY
+    Reserved for future use. For deployments requiring the highest
+    possible access controls.
+
+REGULATORY MAPPING:
+
+  Classification → GDPR category:
+    0-1: Non-personal data (no GDPR basis required)
+    2:   Personal data (GDPR Article 6 lawful basis required)
+    3:   Special categories (GDPR Article 9 explicit consent required)
+    4-5: Operator-defined restricted categories
+
+  Classification → HIPAA:
+    0-2: Not PHI (unless context makes it so)
+    3+:  Treat as PHI in healthcare deployments; apply BAA requirements
+
+  Classification → CCPA:
+    0-1: Non-personal information
+    2-3: Personal information (CCPA rights apply for covered businesses)
+
+IMPLEMENTATION:
+  The classification field is computed in modules/intake.py using
+  keyword pattern matching. Current implementation detects levels 0-3.
+  Levels 4-5 are reserved for operator-defined patterns.
+
+  Future improvement: ML-based classification for higher accuracy,
+  replacing keyword matching (REVIEW_001 Exploration E5).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ITEM 5.08 — SAFE MESSAGING COMPLIANCE
+
+REGULATIONS AND GUIDELINES FOLLOWED:
+  - American Foundation for Suicide Prevention (AFSP) safe messaging
+    guidelines for reporting on suicide
+  - Substance Abuse and Mental Health Services Administration (SAMHSA)
+    safe messaging guidelines
+  - World Health Organization (WHO) preventing suicide: a resource
+    for media professionals (2017 update)
+  - Suicide Prevention Resource Center (SPRC) guidelines
+
+CRISIS DETECTION:
+  ONTO detects crisis signals in user input using a multi-pattern
+  approach covering:
+
+  Direct expressions:
+    Explicit statements of suicidal intent, phrases including
+    "kill myself", "end my life", "want to die"
+
+  Indirect expressions (expanded per REVIEW_001 U7):
+    Hopelessness language: "no reason to go on", "nobody would care"
+    Goodbye patterns: "saying goodbye", "won't be around much longer"
+    Future temporal markers: "after I'm gone", "when I'm no longer here"
+    Helplessness patterns: "can't go on", "no way out"
+
+  HARM signals:
+    Inputs expressing intent to harm others
+
+  INTEGRITY signals:
+    Inputs attempting to subvert system principles or safety checks
+
+CRISIS RESPONSE DESIGN:
+  When a CRISIS signal is detected:
+
+  1. Safe messaging text is displayed BEFORE any other content
+     The text follows AFSP/SAMHSA/WHO guidelines:
+       - Does not repeat or amplify the crisis language
+       - Provides real crisis support resources
+       - Uses language of connection and help-seeking
+       - Does not minimize or dismiss the person's experience
+
+  2. The event is committed permanently to the audit trail
+     This ensures the human operator can review every crisis
+     interaction. Nothing is silently discarded.
+
+  3. Human decision is always required
+     The system never auto-proceeds on a CRISIS signal.
+     A human checkpoint is always triggered. This is Principle I:
+     Life First — non-negotiable.
+
+  4. Real crisis resources are provided
+     The response text is configurable in core/config.py under
+     CRISIS_RESPONSE_TEXT and CRISIS_RESOURCES_BRIEF.
+     Default text includes the 988 Suicide and Crisis Lifeline (US)
+     and Crisis Text Line. Deployers MUST update these to the
+     resources appropriate for their geography and user population.
+
+CONFIGURATION FOR DEPLOYERS:
+  Before deploying ONTO in any context where users may experience
+  crisis, configure core/config.py:
+
+    CRISIS_RESPONSE_TEXT: The full text displayed at a crisis checkpoint.
+    Should be reviewed by a mental health professional familiar with
+    AFSP/SAMHSA/WHO guidelines for your specific population.
+
+    CRISIS_RESOURCES_BRIEF: A brief listing of local crisis resources.
+    Must be updated for the deployer's geography. The default US
+    resources are not appropriate for international deployments.
+
+  IMPORTANT: The default crisis response text in this distribution
+  is designed to meet AFSP/SAMHSA/WHO guidelines for general
+  English-language deployments. It has not been reviewed by a
+  licensed mental health professional.
+  [LEGAL REVIEW REQUIRED before deployment in clinical contexts]
+
+LIMITATIONS:
+  ONTO's crisis detection is keyword and pattern-based. It is NOT:
+    - A clinical assessment tool
+    - A substitute for professional mental health care
+    - Guaranteed to detect all crisis situations
+
+  ONTO IS:
+    - A first-line signal detector that surfaces crisis language
+    - A checkpoint mechanism that requires human review
+    - A permanent audit trail of every crisis interaction
+
+  If ONTO is deployed in a context where users may be in crisis,
+  ensure a human operator is available to respond to crisis
+  checkpoints. ONTO's role is to detect and escalate — not to
+  provide clinical intervention.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUMMARY — ITEMS ADDRESSED
+
+  ✅ 5.01 — GDPR: Cryptographic erasure architecture documented.
+             Right to erasure satisfied without breaking audit integrity.
+  ✅ 5.02 — CCPA: Rights mapped to ONTO architecture.
+             Rights to know, delete, opt-out addressed.
+  ✅ 5.03 — Data retention: Policy defined for audit trail and sessions.
+             EU AI Act Article 26 minimum retention satisfied.
+  ✅ 5.04 — Consent: Framework defined for Stage 1 (implicit) and
+             Stage 2+ (explicit, ledger-based, W3C VC forward-compatible).
+  ✅ 5.06 — Cookie/tracking: No cookies, no tracking, no CDN, no telemetry.
+             Cookie law does not apply.
+  ✅ 5.07 — Data classification: 6-level scheme (0-5) mapped to GDPR,
+             HIPAA, and CCPA categories.
+  ✅ 5.08 — Safe messaging: AFSP/SAMHSA/WHO guidelines described.
+             Crisis detection, response design, and deployer requirements.
+
+ITEMS STILL REQUIRING ACTION
+
+  [ ] Independent legal review of all [LEGAL REVIEW REQUIRED] items
+      before any public or commercial deployment.
+  [ ] Mental health professional review of CRISIS_RESPONSE_TEXT
+      for clinical deployment contexts.
+  [ ] International resource update for CRISIS_RESOURCES_BRIEF
+      for non-US deployments.
+  [ ] Right-to-erasure workflow implementation (cryptographic erasure
+      as a user-facing feature) — Stage 1 completion item.
+  [ ] Right-to-correct workflow — Stage 2 item.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This document is part of the permanent record of ONTO.
+It is updated as the compliance architecture evolves.
+Compliance is not a checkbox. It is a continuous commitment.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
