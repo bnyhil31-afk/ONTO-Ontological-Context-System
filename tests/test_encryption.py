@@ -25,14 +25,15 @@ class TestEncryptionLayer(unittest.TestCase):
 
     def setUp(self):
         """Create isolated environment — fresh layer and temp directory."""
-        # Skip all tests if required libraries are not installed.
-        # self.skipTest() runs at execution time — most reliable skip.
+        # Check for the specific sub-modules actually used by encryption.py.
+        # Top-level imports alone are not sufficient — we need the
+        # actual primitives that the module calls.
         try:
-            import cryptography  # noqa: F401
-            import argon2        # noqa: F401
-        except ImportError as e:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+            from argon2.low_level import hash_secret_raw, Type  # noqa: F401
+        except (ImportError, ModuleNotFoundError) as exc:
             self.skipTest(
-                f"Required library not installed ({e}) — "
+                f"Required library not fully available ({exc}) — "
                 "run: pip install cryptography argon2-cffi"
             )
 
@@ -61,10 +62,7 @@ class TestEncryptionLayer(unittest.TestCase):
         self.assertEqual(len(self.enc._key), 32)
 
     def test_clear_key_removes_key_from_memory(self):
-        """
-        clear_key() sets the key to None.
-        T-016: key must not outlive the session.
-        """
+        """clear_key() sets the key to None. T-016."""
         self.enc.initialize("test-passphrase-correct-123", self.db_path)
         self.assertIsNotNone(self.enc._key)
         self.enc.clear_key()
