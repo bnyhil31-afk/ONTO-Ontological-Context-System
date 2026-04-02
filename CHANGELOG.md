@@ -6,6 +6,125 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Phase 1: Ontology Core v2
+
+### Added
+
+- **`modules/graph.py`** — Phase 1 upgrade (DESIGN-SPEC-001 v1.1).
+  One-time 14-step migration: all Phase 1–4 schema columns added on
+  first boot. No future ALTER TABLE ever needed.
+  New capabilities:
+    - Typed directed edge schema — `edge_types` registry (16 standard
+      types seeded: taxonomic, mereological, causal, associative,
+      temporal, spatial, epistemic). Two-pass seeding prevents
+      self-referential FK violations on inverse_id population.
+    - Provenance layer — every node and edge carries a `provenance_id`
+      linking to source type, trust score, and session hash. Five
+      source types: human (0.95), sensor (0.85), llm (0.30),
+      derived (0.60), system (0.90). Historical backfill on first
+      Phase 1 boot assigns system/0.90 provenance to pre-existing
+      records. Idempotent.
+    - Personalized PageRank — `compute_ppr()` and `get_ppr_subgraph()`
+      via `fast-pagerank` + `scipy.sparse` CSR matrices. Hardware-tiered
+      graph loading (Pi: 5K nodes, laptop: 50K, enterprise: 500K+).
+      Graceful BFS fallback when graph < 200 nodes or PPR not installed.
+      Alpha policy: contextualize=0.85, surface=0.80, memory=0.90.
+    - PPMI incremental counters — `ppmi_counters` and `ppmi_global`
+      tables. Lazy weight computation (Levy et al. 2015 context
+      smoothing α=0.75). PPMI invalidated on every relate() write.
+      `graph.prune()` soft-deletes edges below configurable threshold
+      (ONTO_PPMI_PRUNE_THRESHOLD, default 0.5).
+    - Per-user decay profiles — `decay_profiles` table with 5 seeded
+      profiles: standard (λ=0.95), slow/HIPAA (λ=0.99), fast (λ=0.85),
+      personal/GDPR (λ=0.97), financial/GLBA (λ=0.98). Selected via
+      ONTO_DECAY_PROFILE env var. PPMI counters now decay with the
+      graph on every `graph.decay()` call.
+    - YAKE concept extractor — replaces RAKE. Five-feature scoring
+      (casing, position, frequency, context diversity, sentence spread)
+      mapped to ONTO's three axes (Distance, Size, Complexity). Zero
+      external dependencies. 15-concept cap preserved.
+    - Pluggable extractor interface — `ConceptExtractor` protocol +
+      `set_extractor()` swap function. Phase 4 spaCy upgrade is a
+      one-line swap with no changes to any other module.
+    - PPR cache invalidation — `invalidate_ppr_cache()` called after
+      every `relate()` write. PPR matrix rebuilt lazily on next query.
+    - Forward-compatibility columns — all Phase 2–4 columns (did:key,
+      valid_from/to, is_deleted, vector_clock, crdt_state, CRDT LWW,
+      embedding, embedding_model/version/hash) added now. NULL until
+      their phase activates logic. One schema migration, ever.
+  Scientific basis (Phase 1, new):
+    Personalized PageRank (Page et al. 1999; Gleich 2015)
+    YAKE keyword extraction (Campos et al. 2020)
+    Context smoothing α=0.75 (Levy, Goldberg & Dagan 2015)
+  Checklist items completed: 6.01, 6.02, 6.03, 6.04, 6.05
+
+- **`tests/test_graph_phase1.py`** — Phase 1 test suite. 60 tests
+  across 12 classes:
+    TestEdgeTypeRegistry (5)   — 16 types seeded, inverse_ids set,
+                                  idempotent, categories valid
+    TestTypedEdges (4)         — default type=2, direction=undirected,
+                                  confidence=1.0
+    TestProvenanceTable (5)    — record per relate(), provenance_id in
+                                  result, trust score=0.95 for human
+    TestProvBackfill (3)       — backfill record exists, idempotent,
+                                  no NULL provenance_ids after relate()
+    TestPPRInterface (5+1)     — returns list, empty on bad seeds,
+                                  never raises, subgraph schema correct
+    TestPPMICounters (6)       — tables exist, totals increment,
+                                  counters populated, weight stays NULL
+    TestDecayProfiles (5)      — 5 profiles, standard is default,
+                                  lambda in (0,1], idempotent
+    TestSessionConfig (3)      — table exists, P2 columns present
+    TestConceptExtractorYAKE (6) — empty→[], stopwords filtered, cap
+                                   enforced, version/model name correct
+    TestExtractorPlugin (4)    — swap works, mock concepts appear,
+                                  YAKE restore removes mock, thread-safe
+    TestMigration (5)          — all tables present, Stage 1 preserved,
+                                  data survives reinitialize, indexes
+                                  present, wipe clears ppmi_counters
+    TestForwardCompat (7)      — all P2/P3/P4 columns present and NULL
+
+- **`docs/DESIGN-SPEC-001.md`** — Full design specification for Phase 1
+  and beyond. Locked before coding began. Covers: typed edge schema,
+  PPR interface, PPMI approach, decay profiles, concept extraction,
+  MCP tool surface (Phase 2), vector integration (Phase 4), build vs
+  borrow register, migration strategy, forward compatibility invariants.
+
+- **`docs/REGULATORY-MAP-002.md`** — Full regulatory compliance mapping.
+  Covers: EU AI Act (August 2026 deadline), GDPR updated for typed
+  edges and MCP data flows, CCPA + AB 2930, HIPAA field-level
+  encryption gap, NIST AI RMF, SOC 2 Type II readiness, NIST CSF 2.0,
+  financial services (GLBA/PCI-DSS/SEC), FDA SaMD, safe messaging
+  updated for graph inference risk, open-source licensing, regulatory
+  profile framework, action register by milestone.
+
+### Changed
+
+- **`modules/graph.py`** — `navigate()` now routes to PPR on graphs
+  ≥ 200 nodes (fast-pagerank installed), falling back to BFS silently.
+  Both paths return identical result schema. `relate()` now creates a
+  provenance record per call and updates PPMI counters on every edge
+  write. `decay()` now decays PPMI counters by the active profile's
+  lambda. `wipe()` now clears ppmi_counters before graph_nodes
+  (FK ordering) and resets ppmi_global. `_spacing_increment()` and
+  `_effective_weight()` signatures restored to match existing test
+  contracts exactly.
+
+- **`docs/ONTO_PreLaunch_Checklist.txt`** — Updated to v11. Items
+  6.01–6.05 marked complete. Test count updated to 313.
+
+- **`tests/README.md`** — Updated to reflect 313 total passing tests.
+  TestEdgeTypeRegistry, TestTypedEdges, TestProvenanceTable,
+  TestProvBackfill, TestPPRInterface, TestPPMICounters,
+  TestDecayProfiles, TestSessionConfig, TestConceptExtractorYAKE,
+  TestExtractorPlugin, TestMigration, TestForwardCompat added.
+
+### Dependencies added (Phase 1 only)
+
+- `fast-pagerank` — PPR computation on scipy CSR matrices
+- `scipy` — sparse matrix substrate for PPR
+- `psutil` — RAM detection for hardware tier selection
+
 ## [Unreleased] — License Update, Copyright Notice, IP Protection
 
 ### Changed
