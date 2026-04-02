@@ -651,13 +651,23 @@ def initialize() -> None:
                 (15, "supports",       "epistemic",    16,   "Evidential support (ONTO native)",                 1),
                 (16, "supported-by",   "epistemic",    15,   "Inverse of supports",                              1),
             ]
+            # Pass 1: insert all rows without inverse_id to avoid self-referential
+            # FK violations (e.g. inserting id=3 with inverse_id=4 before id=4 exists).
             for et in _EDGE_TYPES:
                 conn.execute(
                     "INSERT OR IGNORE INTO edge_types "
-                    "(id, name, category, inverse_id, description, is_directed, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (et[0], et[1], et[2], et[3], et[4], et[5], now),
+                    "(id, name, category, description, is_directed, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (et[0], et[1], et[2], et[4], et[5], now),
                 )
+            # Pass 2: set inverse_id now that all sibling rows exist.
+            for et in _EDGE_TYPES:
+                if et[3] is not None:
+                    conn.execute(
+                        "UPDATE edge_types SET inverse_id = ? "
+                        "WHERE id = ? AND inverse_id IS NULL",
+                        (et[3], et[0]),
+                    )
 
             # -----------------------------------------------------------------
             # STEP 3: provenance (W3C PROV-DM compatible from day one)
@@ -1701,14 +1711,14 @@ def wipe() -> Dict[str, int]:
             ).fetchone()["c"]
 
             with conn:
+                # ppmi_counters has FK to graph_nodes — must delete first
+                conn.execute("DELETE FROM ppmi_counters")
                 conn.execute("DELETE FROM graph_edges")
                 conn.execute("DELETE FROM graph_nodes")
                 conn.execute(
                     "UPDATE graph_metadata SET value = '0' "
                     "WHERE key = 'total_inputs_processed'"
                 )
-                # Phase 1: reset PPMI counters
-                conn.execute("DELETE FROM ppmi_counters")
                 conn.execute(
                     "UPDATE ppmi_global SET value = 0.0 "
                     "WHERE key = 'total_co_occurrences'"
@@ -1967,13 +1977,14 @@ def _days_since(epoch: float, now_dt: datetime) -> float:
         return 0.0
 
 
-def _spacing_increment(times_seen: int) -> float:
+def _spacing_increment(times_seen: int, base_weight: float = BASE_REINFORCEMENT) -> float:
     """
     Spacing-effect reinforcement: increment grows with repetition spacing.
     Scientific basis: Cepeda et al. (2006) — spaced practice effect.
-    Returns BASE_REINFORCEMENT × log(1 + times_seen + 1).
+    Returns base_weight × log(1 + times_seen + 1).
+    base_weight parameter preserved for backward compatibility with existing tests.
     """
-    return BASE_REINFORCEMENT * math.log(2 + times_seen)
+    return base_weight * math.log(2 + times_seen)
 
 
 def _effective_weight(
@@ -1985,6 +1996,7 @@ def _effective_weight(
     degree: int,
     is_sensitive: int,
     now_dt: datetime,
+    base_weight: float = BASE_REINFORCEMENT,  # preserved for backward compat
 ) -> float:
     """
     Three-axis effective weight:
