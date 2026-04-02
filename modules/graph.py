@@ -855,6 +855,8 @@ def initialize() -> None:
                  "graph_nodes(concept)"),
                 ("idx_graph_edges_source",
                  "graph_edges(source_node_id)"),
+                ("idx_graph_edges_target",
+                 "graph_edges(target_node_id)"),
                 # Phase 1
                 ("idx_edges_source_type",
                  "graph_edges(source_node_id, edge_type_id) WHERE is_deleted = 0"),
