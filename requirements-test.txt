@@ -4,12 +4,13 @@
 # Command:
 #   pip install -r requirements-test.txt
 
-# Testing
+# ── Testing ──────────────────────────────────────────────────────────────────
 pytest>=7.0
 pytest-cov>=4.0
+pytest-asyncio>=0.23.0
 flake8>=6.0
 
-# API server
+# ── API server (Stage 1 HTTP) ─────────────────────────────────────────────────
 fastapi>=0.115.0
 uvicorn[standard]>=0.27.0
 
@@ -20,11 +21,29 @@ uvicorn[standard]>=0.27.0
 # (October 2024) and has been removed from the CI matrix.
 starlette>=0.45.3
 
-# HTTP client — required by FastAPI TestClient for API tests
+# HTTP client — required by FastAPI TestClient and MCP test transport
 httpx>=0.27.0
 
-# Encryption — AES-256-GCM (item 2.01)
-# First deliberate external dependency. Actively maintained.
+# ── MCP Interface (Phase 2) ───────────────────────────────────────────────────
+# FastMCP 3.x — MCP server framework (powers ~70% of all MCP servers)
+# Decorator-based tool/resource/prompt definitions.
+# Auto-generates JSON Schema from Python type annotations.
+fastmcp>=2.0.0
+
+# ── Ontology Core (Phase 1) ───────────────────────────────────────────────────
+# Personalized PageRank — fast C-extension over scipy CSR matrices.
+# ~50ms for 10K nodes vs NetworkX ~60s. See DESIGN-SPEC-001 §2.
+fast-pagerank>=0.0.4
+
+# Sparse matrix substrate for PPR computation.
+scipy>=1.11.0
+
+# RAM detection for hardware tier selection (Pi/laptop/enterprise).
+# Used at boot to decide PPR graph loading limits.
+psutil>=5.9.0
+
+# ── Encryption (item 2.01) ────────────────────────────────────────────────────
+# AES-256-GCM. First deliberate external dependency. Actively maintained.
 # pip-audit scans this on every CI run.
 cryptography>=41.0
 
