@@ -1,200 +1,36 @@
-# Running the ONTO Tests
+# ONTO Test Suite
 
-Plain English guide. No assumptions. No jargon.
+Tests: **313** passing across Python 3.9–3.12
+CI: green ✅
 
----
-
-## What the tests do
-
-They check that every part of ONTO works correctly.
-
-If all tests pass — the system is behaving as intended.
-If any test fails — something needs attention before shipping.
+Rule 1.09A: Any change to the test suite requires updating three things
+together: the test file header (expected count), this README (expected
+count), and the pre-launch checklist (current status). All three or none.
 
 ---
 
-## What success looks like
-
-```
-227 passed, 0 failed, 0 errors
-```
-
-If you see anything different — something needs attention.
-The output will tell you exactly which test failed and why.
-
----
-
-## Step 1 — Install test tools
+## Running the tests
 
 ```bash
 pip install -r requirements-test.txt
-```
-
-This installs pytest and all test dependencies.
-You only need to do this once.
-
----
-
-## Step 2 — Run the tests
-
-From the project root folder:
-
-```bash
 pytest tests/ -v
 ```
 
-The `-v` flag means "verbose" — it shows each test name as it runs.
-
----
-
-## Step 3 — Read the results
-
-Every line will show either:
-
-```
-PASSED   — this part of the system works correctly
-FAILED   — this part needs attention
-ERROR    — something unexpected happened
-```
-
-At the end you will see a summary:
-
-```
-227 passed in X.Xs
-```
-
----
-
-## Run with coverage report
-
-Coverage tells you what percentage of the code is tested.
-
+To run only Phase 1 tests:
 ```bash
-pytest tests/ -v --cov=. --cov-report=term-missing
-```
-
-Target: above 80% for all critical modules.
-
----
-
-## Run a single test class
-
-```bash
-pytest tests/test_onto.py::TestMemory -v
+pytest tests/test_graph_phase1.py -v
 ```
 
 ---
 
-## Run just the smoke test first
+## Test files
 
-The smoke test is the fastest way to confirm the system is alive.
-Run this before anything else:
+### tests/test_onto.py — Core pipeline (188 tests)
 
-```bash
-pytest tests/test_onto.py::TestSmoke -v
-```
+Covers the five-step pipeline, safety, compliance, and cryptographic
+integrity. Organized into test classes per module.
 
-If the smoke test passes — the system boots correctly.
-If it fails — fix it before running anything else.
-
----
-
-## Run without pytest (built-in Python only)
-
-If you cannot install pytest, use Python's built-in test runner:
-
-```bash
-python3 -m unittest discover tests/ -v
-```
-
-Results will look slightly different but test the same things.
-
----
-
-## What each test file and class covers
-
-### tests/test_onto.py — Core system (115 tests)
-
-Class                 | Tests | What it covers
-----------------------|-------|-----------------------------------------------
-TestSmoke             |   4   | System boots, principles verify, memory initializes
-TestVerify            |  10   | Cryptographic hash protection of the principles
-TestMemory            |  15   | Permanent append-only audit trail
-TestMerkleChainCore   |   7   | Chain linking, tamper detection, verify_chain() contract
-TestIntake            |  22   | Input receiving, classification, safety detection
-TestContextualize     |  12   | Living field and context building
-TestSurface           |  11   | Honest plain language output
-TestFullLoop          |   8   | All five steps working together end to end
-TestSanitization      |  14   | Input sanitization — dangerous character handling
-TestEdgeCases         |  12   | Unusual but real situations the system may encounter
-
-### tests/test_conformance.py — Crossover contract (16 tests)
-
-Class          | Tests | What it covers
----------------|-------|-----------------------------------------------
-TestRELATE     |   4   | RELATE function — input ingestion and classification
-TestNAVIGATE   |   4   | NAVIGATE function — context traversal and uncertainty
-TestGOVERN     |   4   | GOVERN function — human sovereignty checkpoint
-TestREMEMBER   |   4   | REMEMBER function — permanent audit trail
-
-### tests/test_security.py — Security hardening (28 tests)
-
-Class                       | Tests | What it covers
-----------------------------|-------|-----------------------------------------------
-TestRateLimiter             |   8   | Sliding window rate limiting
-TestPrinciplesHashProtection|   8   | principles.hash tamper detection
-TestEnvironmentConfig       |  12   | Environment variable configuration safety
-
-### tests/test_memory_chain.py — Merkle chain and audit integrity (19 tests)
-
-Class                   | Tests | What it covers
-------------------------|-------|-----------------------------------------------
-TestMerkleChain         |  11   | Cryptographic chain linking, tamper detection
-TestReadLogging         |   6   | READ_ACCESS events for sensitive data reads
-TestSignatureAlgorithm  |   2   | Signature algorithm field stored correctly
-
-### tests/test_classification_and_config.py — Classification and safe messaging (16 tests)
-
-Class                  | Tests | What it covers
------------------------|-------|-----------------------------------------------
-TestDataClassification |  11   | Sensitivity classification at intake (levels 0–3)
-TestSafeMessagingConfig|   5   | Crisis response text and automation bias warning
-
-### tests/test_session.py — Session management (17 tests)
-
-Class                  | Tests | What it covers
------------------------|-------|-----------------------------------------------
-TestSessionStart       |   4   | Token generation, uniqueness, single-session invariant
-TestSessionValidation  |   5   | Valid/invalid/expired token handling
-TestSessionRotation    |   3   | Token rotation — old token immediately invalid
-TestSessionTermination |   3   | Explicit termination behavior
-TestSessionAuditTrail  |   2   | Session events recorded permanently
-
-### tests/test_auth.py — Authentication (11 tests)
-
-Class                | Tests | What it covers
----------------------|-------|-----------------------------------------------
-TestAuthentication   |  11   | Argon2id passphrase hashing, plaintext never stored,
-                     |       | correct/wrong passphrase, clear_passphrase(),
-                     |       | brute force attempt tracking, input validation,
-                     |       | verification phrase T-012
-
-Note: These tests require `argon2-cffi`. They are automatically skipped
-if the library is not available (see tests/conftest.py).
-
-### tests/test_encryption.py — AES-256-GCM encryption (8 tests)
-
-Class                | Tests | What it covers
----------------------|-------|-----------------------------------------------
-TestEncryptionLayer  |   8   | Key derivation (32 bytes), key cleared on
-                     |       | clear_key(), same passphrase/salt → same key,
-                     |       | different passphrase → different key,
-                     |       | per-installation salt, salt file creation
-
-Note: These tests require `cryptography` and `argon2-cffi`. They are
-automatically skipped if either library is not available.
-
-### tests/test_graph.py — Relationship graph (32 tests)
+### tests/test_graph.py — Relationship graph Stage 1 (32 tests)
 
 Class                   | Tests | What it covers
 ------------------------|-------|-----------------------------------------------
@@ -214,6 +50,44 @@ TestEffectiveWeight     |   3   | Power-law decay reduces weight over time,
 TestSpacingIncrement    |   3   | Immediate = base, 30-day = 2× base, monotonic
 TestConceptExtraction   |   3   | Empty text → empty list, stopwords filtered,
                         |       | MAX_CONCEPTS_PER_INPUT respected
+
+### tests/test_graph_phase1.py — Phase 1 Ontology Core (60 tests)
+
+Class                      | Tests | What it covers
+---------------------------|-------|--------------------------------------------
+TestEdgeTypeRegistry       |   5   | 16 types seeded, inverse_ids populated,
+                           |       | co-occurs-with is id=2, idempotent
+TestTypedEdges             |   4   | Default edge_type_id=2, direction=undirected,
+                           |       | confidence=1.0, all categories valid
+TestProvenanceTable        |   5   | Record per relate(), provenance_id in result,
+                           |       | nodes have it set, human trust=0.95
+TestProvBackfill           |   3   | Backfill record exists, idempotent,
+                           |       | no NULL provenance_ids after relate()
+TestPPRInterface           |   6   | Returns list, empty on bad seeds, never raises,
+                           |       | subgraph schema, cache invalidation safe
+TestPPMICounters           |   6   | Tables exist, global increments, counters
+                           |       | populated, ppmi_weight stays NULL (lazy),
+                           |       | prune returns edges_pruned key
+TestDecayProfiles          |   5   | 5 profiles seeded, standard is default,
+                           |       | lambda in (0,1], idempotent
+TestSessionConfig          |   3   | Table exists, P2 columns present
+TestConceptExtractorYAKE   |   6   | Empty→[], stopwords filtered, cap enforced,
+                           |       | returns list, version/model name correct
+TestExtractorPlugin        |   4   | Swap accepted, mock concepts appear,
+                           |       | YAKE restore removes mock, thread-safe
+TestMigration              |   5   | All Phase 1 tables present, Stage 1 preserved,
+                           |       | data survives reinitialize, indexes exist,
+                           |       | wipe clears ppmi_counters
+TestForwardCompat          |   7   | All P2/P3/P4 columns present and NULL on
+                           |       | graph_nodes, graph_edges, mcp_session_map
+
+### tests/test_session.py — Session management (17 tests)
+
+Session creation, validation, rotation, termination, audit trail.
+
+### tests/test_auth.py — Authentication (11 tests)
+
+Passphrase setup, Argon2id verification, lockout, dev mode.
 
 ---
 
