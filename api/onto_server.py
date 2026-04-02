@@ -71,6 +71,7 @@ from modules import graph, memory
 from modules.graph import (
     compute_ppr,
     get_ppr_subgraph,
+    _contains_crisis as _graph_crisis_check,
 )
 from core.session import session_manager
 
@@ -287,23 +288,12 @@ def _post_record(
         pass
 
 
-def _is_crisis(package: Dict[str, Any]) -> bool:
+def _is_crisis(text: str) -> bool:
     """
-    Defensive crisis check across all possible intake package structures.
-    intake.receive() may store crisis info as a top-level bool, a nested
-    dict, or a specific key — handle all cases without AttributeError.
+    Check for crisis content using the same function graph.relate() uses
+    internally. Single source of truth — consistent with graph layer.
     """
-    if package.get("crisis_detected"):
-        return True
-    if package.get("crisis"):
-        return True
-    safety = package.get("safety")
-    if isinstance(safety, dict):
-        return bool(safety.get("crisis") or safety.get("crisis_detected"))
-    # Some versions store safety as a bool True = safe, False = unsafe
-    if isinstance(safety, bool) and not safety:
-        return True
-    return False
+    return _graph_crisis_check(text)
 
 
 
@@ -387,7 +377,7 @@ if _FASTMCP_AVAILABLE:
 
             package = _intake.receive(text)
 
-            if _is_crisis(package):
+            if _is_crisis(text):
                 audit_record = memory.record(
                     event_type="MCP_CRISIS",
                     notes="Crisis signal detected via onto_ingest.",
@@ -637,7 +627,7 @@ if _FASTMCP_AVAILABLE:
 
             package = _intake.receive(text)
 
-            if _is_crisis(package):
+            if _is_crisis(text):
                 _post_record("onto_surface", s_hash, "crisis", pre_id)
                 return _crisis(audit_id=pre_id)
 
