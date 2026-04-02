@@ -220,11 +220,16 @@ class TestSessionResolution(_MCPTestBase):
             result = _resolve_session("Bearer invalid-token")
         self.assertIsNone(result)
 
-    def test_require_session_raises_on_no_auth(self):
+    def test_require_session_returns_none_on_no_auth(self):
+        """
+        _require_session returns None when auth fails.
+        Each tool checks for None and returns _auth_error() envelope.
+        This avoids uncaught ValueError propagating out of the tool.
+        """
         from api.onto_server import _require_session
         with self._mock_no_session():
-            with self.assertRaises(ValueError):
-                _require_session(None)
+            result = _require_session(None)
+        self.assertIsNone(result)
 
 
 # ---------------------------------------------------------------------------
