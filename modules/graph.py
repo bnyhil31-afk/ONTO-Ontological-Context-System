@@ -850,6 +850,10 @@ def initialize() -> None:
             # STEP 11: Indexes (partial WHERE keeps footprint small at P1 scale)
             # -----------------------------------------------------------------
             _indexes = [
+                # Stage 1 — preserved for backward compatibility
+                ("idx_graph_nodes_concept",
+                 "graph_nodes(concept)"),
+                # Phase 1
                 ("idx_edges_source_type",
                  "graph_edges(source_node_id, edge_type_id) WHERE is_deleted = 0"),
                 ("idx_edges_target_type",
@@ -1429,13 +1433,12 @@ def _navigate_bfs(
 
                 ew = _effective_weight(
                     row["weight"],
-                    row["last_reinforced"],
+                    _days_since(row["last_reinforced"], now_dt),
                     row["node_times_seen"],
                     row["inputs_seen"],
                     total_inputs,
                     degree,
                     row["is_sensitive"],
-                    now_dt,
                 )
 
                 if ew > 0:
@@ -1633,6 +1636,11 @@ def decay() -> Dict[str, int]:
                     )
                 """).fetchall()
                 for row in orphans:
+                    # ppmi_counters has FK to graph_nodes — delete first
+                    conn.execute(
+                        "DELETE FROM ppmi_counters WHERE node_id = ?",
+                        (row["id"],),
+                    )
                     conn.execute(
                         "DELETE FROM graph_nodes WHERE id = ?",
                         (row["id"],),
@@ -1874,12 +1882,16 @@ def _upsert_node(
     Phase 1: attaches provenance_id when creating new nodes.
     """
     existing = conn.execute(
-        "SELECT id, times_seen, inputs_seen FROM graph_nodes WHERE concept = ?",
+        "SELECT id, times_seen, inputs_seen, last_reinforced FROM graph_nodes WHERE concept = ?",
         (concept,),
     ).fetchone()
 
     if existing:
-        increment = _spacing_increment(existing["times_seen"])
+        days_elapsed = _days_since(
+            existing["last_reinforced"],
+            datetime.now(timezone.utc),
+        )
+        increment = _spacing_increment(days_elapsed, BASE_REINFORCEMENT)
         conn.execute(
             "UPDATE graph_nodes "
             "SET weight = weight + ?, times_seen = times_seen + 1, "
@@ -1915,13 +1927,17 @@ def _upsert_edge(
     Phase 1: attaches provenance_id, sets edge_type_id=2 (co-occurs-with).
     """
     existing = conn.execute(
-        "SELECT id, weight, times_seen FROM graph_edges "
+        "SELECT id, weight, times_seen, last_reinforced FROM graph_edges "
         "WHERE source_node_id = ? AND target_node_id = ?",
         (source_id, target_id),
     ).fetchone()
 
     if existing:
-        increment = _spacing_increment(existing["times_seen"])
+        days_elapsed = _days_since(
+            existing["last_reinforced"],
+            datetime.now(timezone.utc),
+        )
+        increment = _spacing_increment(days_elapsed, reinforcement)
         conn.execute(
             "UPDATE graph_edges "
             "SET weight = weight + ?, times_seen = times_seen + 1, "
@@ -1977,40 +1993,45 @@ def _days_since(epoch: float, now_dt: datetime) -> float:
         return 0.0
 
 
-def _spacing_increment(times_seen: int, base_weight: float = BASE_REINFORCEMENT) -> float:
+def _spacing_increment(days_elapsed: float, base_weight: float) -> float:
     """
-    Spacing-effect reinforcement: increment grows with repetition spacing.
-    Scientific basis: Cepeda et al. (2006) — spaced practice effect.
-    Returns base_weight × log(1 + times_seen + 1).
-    base_weight parameter preserved for backward compatibility with existing tests.
+    Spacing-effect reinforcement based on delay since last review.
+
+    Immediate review (0 days):  returns base_weight (factor = 1.0).
+    Optimal delay (~30 days):   returns 2× base_weight (factor = 2.0).
+    Cap at 2× to prevent runaway reinforcement.
+
+    Scientific basis: Cepeda et al. (2006) spaced-repetition meta-analysis.
+    Factor = min(2.0, 1.0 + days_elapsed / 30.0)
     """
-    return base_weight * math.log(2 + times_seen)
+    factor = min(2.0, 1.0 + float(days_elapsed) / 30.0)
+    return base_weight * factor
 
 
 def _effective_weight(
-    weight: float,
-    last_reinforced: float,
+    base_weight: float,
+    days_since: float,
     times_seen: int,
     inputs_seen: int,
     total_inputs: int,
     degree: int,
     is_sensitive: int,
-    now_dt: datetime,
-    base_weight: float = BASE_REINFORCEMENT,  # preserved for backward compat
 ) -> float:
     """
-    Three-axis effective weight:
-      Axis 1 Distance: power-law decay (Wixted 2004)
-      Axis 2 Size:     TF-IDF downweight (Sparck Jones 1972)
-      Axis 3 Complexity: fan effect (Anderson 1983 ACT-R)
+    Three-axis effective weight (pre-computed days_since passed by caller):
+      Axis 1 Distance:    power-law decay (Wixted 2004)
+      Axis 2 Size:        TF-IDF downweight (Sparck Jones 1972)
+      Axis 3 Complexity:  fan effect (Anderson 1983 ACT-R)
     + PPMI approximation (Bullinaria & Levy 2007)
+
+    Caller is responsible for computing days_since from last_reinforced.
+    This keeps the function pure and directly testable with specific day values.
     """
-    if weight <= 0:
+    if base_weight <= 0:
         return 0.0
 
-    days = _days_since(last_reinforced, now_dt)
     exponent = DECAY_EXPONENT * 1.4 if is_sensitive else DECAY_EXPONENT
-    axis1 = weight * (1.0 + days) ** (-exponent)
+    axis1 = base_weight * (1.0 + days_since) ** (-exponent)
 
     idf = math.log((total_inputs + 1) / max(inputs_seen, 1))
     axis2 = axis1 * (1.0 + math.log(1 + times_seen)) * idf
