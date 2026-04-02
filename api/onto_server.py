@@ -93,16 +93,7 @@ _TRUST_FLAG_THRESHOLD = float(
 # ---------------------------------------------------------------------------
 
 if _FASTMCP_AVAILABLE:
-    mcp = FastMCP(
-        name="ONTO",
-        version="1.0.0",
-        description=(
-            "Ontological Context System — an ontology-driven integration "
-            "layer. Traverse, reason over, and act upon a typed knowledge "
-            "graph via MCP. Human sovereignty preserved at every consequential "
-            "decision. Full cryptographic audit trail on every operation."
-        ),
-    )
+    mcp = FastMCP("ONTO")
 else:
     mcp = None  # type: ignore
 
