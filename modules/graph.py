@@ -89,6 +89,7 @@ def _detect_hardware_tier() -> str:
         return "enterprise"
     return "laptop"  # safe default
 
+
 _HARDWARE_TIER: str = _detect_hardware_tier()
 _MAX_PPR_NODES: int = {
     "pi": 5_000,
@@ -114,16 +115,18 @@ SENSITIVE_REINFORCEMENT = float(
 _PPR_MIN_GRAPH_SIZE = 200    # below this, BFS is more meaningful than PPR
 _PPR_MIN_AVG_DEGREE = 3.0   # below this, PPR degenerates toward uniform
 PPR_ALPHA_CONTEXTUALIZE = float(os.getenv("ONTO_PPR_ALPHA_CONTEXTUALIZE", "0.85"))
-PPR_ALPHA_SURFACE       = float(os.getenv("ONTO_PPR_ALPHA_SURFACE",       "0.80"))
-PPR_ALPHA_MEMORY        = float(os.getenv("ONTO_PPR_ALPHA_MEMORY",        "0.90"))
+PPR_ALPHA_SURFACE = float(os.getenv("ONTO_PPR_ALPHA_SURFACE", "0.80"))
+PPR_ALPHA_MEMORY = float(os.getenv("ONTO_PPR_ALPHA_MEMORY", "0.90"))
 
 # Phase 1 — PPMI
-PPMI_PRUNE_THRESHOLD  = float(os.getenv("ONTO_PPMI_PRUNE_THRESHOLD", "0.5"))
+PPMI_PRUNE_THRESHOLD = float(os.getenv("ONTO_PPMI_PRUNE_THRESHOLD", "0.5"))
 _PPMI_SMOOTHING_ALPHA = 0.75  # Levy et al. (2015) — not user-configurable
 
 # Phase 1 — Trust
-TRUST_THRESHOLD_FLAG       = float(os.getenv("ONTO_TRUST_THRESHOLD_FLAG",       "0.5"))
-TRUST_THRESHOLD_CHECKPOINT = float(os.getenv("ONTO_TRUST_THRESHOLD_CHECKPOINT", "0.2"))
+TRUST_THRESHOLD_FLAG = float(os.getenv("ONTO_TRUST_THRESHOLD_FLAG", "0.5"))
+TRUST_THRESHOLD_CHECKPOINT = float(
+    os.getenv("ONTO_TRUST_THRESHOLD_CHECKPOINT", "0.2")
+)
 
 # Phase 1 — Decay profile selection
 DEFAULT_DECAY_PROFILE = os.getenv("ONTO_DECAY_PROFILE", "standard")
@@ -536,8 +539,12 @@ def _build_ppr_matrix(
         if src is None or tgt is None:
             continue
         w = float(e["weight"]) if e["weight"] and e["weight"] > 0 else 1.0
-        rows.append(src); cols.append(tgt); data.append(w)
-        rows.append(tgt); cols.append(src); data.append(w)  # undirected
+        rows.append(src)
+        cols.append(tgt)
+        data.append(w)
+        rows.append(tgt)
+        cols.append(src)
+        data.append(w)  # undirected
 
     if not rows:
         return None, None
