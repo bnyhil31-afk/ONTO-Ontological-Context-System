@@ -287,6 +287,26 @@ def _post_record(
         pass
 
 
+def _is_crisis(package: Dict[str, Any]) -> bool:
+    """
+    Defensive crisis check across all possible intake package structures.
+    intake.receive() may store crisis info as a top-level bool, a nested
+    dict, or a specific key — handle all cases without AttributeError.
+    """
+    if package.get("crisis_detected"):
+        return True
+    if package.get("crisis"):
+        return True
+    safety = package.get("safety")
+    if isinstance(safety, dict):
+        return bool(safety.get("crisis") or safety.get("crisis_detected"))
+    # Some versions store safety as a bool True = safe, False = unsafe
+    if isinstance(safety, bool) and not safety:
+        return True
+    return False
+
+
+
 def _session_hash(session: Dict[str, Any]) -> str:
     """SHA-256 of the session token — never store the token itself."""
     token = session.get("token", "")
@@ -367,9 +387,7 @@ if _FASTMCP_AVAILABLE:
 
             package = _intake.receive(text)
 
-            if package.get("crisis_detected") or package.get(
-                "safety", {}
-            ).get("crisis"):
+            if _is_crisis(package):
                 audit_record = memory.record(
                     event_type="MCP_CRISIS",
                     notes="Crisis signal detected via onto_ingest.",
@@ -386,8 +404,18 @@ if _FASTMCP_AVAILABLE:
                 package["domain"] = domain
 
             relate_result = graph.relate(package)
-            enriched = contextualize.build(package)
-            surfaced = surface.build(enriched)
+
+            # contextualize and surface have module-level state; wrap
+            # defensively so a cold-start or empty-graph state doesn't
+            # block the ingest result from being returned.
+            confidence = 0.5
+            try:
+                enriched = contextualize.build(package)
+                surfaced = surface.build(enriched)
+                if isinstance(surfaced, dict):
+                    confidence = surfaced.get("confidence", 0.5)
+            except Exception:
+                pass  # surface failure never blocks ingest success
 
             record = memory.record(
                 event_type="MCP_INGEST",
@@ -417,10 +445,10 @@ if _FASTMCP_AVAILABLE:
                         "sensitive_detected", False
                     ),
                     "provenance_id": relate_result.get("provenance_id"),
-                    "confidence": surfaced.get("confidence", 0.5),
+                    "confidence": confidence,
                 },
                 audit_id=audit_id,
-                confidence=surfaced.get("confidence", 0.5),
+                confidence=confidence,
             )
 
         except ValueError as exc:
@@ -609,14 +637,20 @@ if _FASTMCP_AVAILABLE:
 
             package = _intake.receive(text)
 
-            if package.get("crisis_detected") or package.get(
-                "safety", {}
-            ).get("crisis"):
+            if _is_crisis(package):
                 _post_record("onto_surface", s_hash, "crisis", pre_id)
                 return _crisis(audit_id=pre_id)
 
-            enriched = contextualize.build(package)
-            surfaced = surface.build(enriched)
+            # contextualize and surface have module-level state; wrap
+            # defensively so cold-start or empty-graph doesn't block surfacing.
+            surfaced: Dict[str, Any] = {}
+            try:
+                enriched = contextualize.build(package)
+                result_s = surface.build(enriched)
+                if isinstance(result_s, dict):
+                    surfaced = result_s
+            except Exception:
+                pass  # fall back to empty surfaced dict
 
             navigate_results = graph.navigate(text, include_sensitive=False)
             filtered_nav, nav_warnings = _surface_safety_filter(
