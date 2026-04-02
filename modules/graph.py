@@ -853,6 +853,8 @@ def initialize() -> None:
                 # Stage 1 — preserved for backward compatibility
                 ("idx_graph_nodes_concept",
                  "graph_nodes(concept)"),
+                ("idx_graph_edges_source",
+                 "graph_edges(source_node_id)"),
                 # Phase 1
                 ("idx_edges_source_type",
                  "graph_edges(source_node_id, edge_type_id) WHERE is_deleted = 0"),
@@ -1439,6 +1441,8 @@ def _navigate_bfs(
                     total_inputs,
                     degree,
                     row["is_sensitive"],
+                    reinforcement_count=row["times_seen"],
+                    fan_dilution=1.0 / max(1.0, math.sqrt(degree)),
                 )
 
                 if ew > 0:
@@ -1891,7 +1895,7 @@ def _upsert_node(
             existing["last_reinforced"],
             datetime.now(timezone.utc),
         )
-        increment = _spacing_increment(days_elapsed, BASE_REINFORCEMENT)
+        increment = _spacing_increment(BASE_REINFORCEMENT, days_elapsed)
         conn.execute(
             "UPDATE graph_nodes "
             "SET weight = weight + ?, times_seen = times_seen + 1, "
@@ -1937,7 +1941,7 @@ def _upsert_edge(
             existing["last_reinforced"],
             datetime.now(timezone.utc),
         )
-        increment = _spacing_increment(days_elapsed, reinforcement)
+        increment = _spacing_increment(reinforcement, days_elapsed)
         conn.execute(
             "UPDATE graph_edges "
             "SET weight = weight + ?, times_seen = times_seen + 1, "
@@ -1993,7 +1997,7 @@ def _days_since(epoch: float, now_dt: datetime) -> float:
         return 0.0
 
 
-def _spacing_increment(days_elapsed: float, base_weight: float) -> float:
+def _spacing_increment(base_weight: float, days_elapsed: float) -> float:
     """
     Spacing-effect reinforcement based on delay since last review.
 
@@ -2003,6 +2007,8 @@ def _spacing_increment(days_elapsed: float, base_weight: float) -> float:
 
     Scientific basis: Cepeda et al. (2006) spaced-repetition meta-analysis.
     Factor = min(2.0, 1.0 + days_elapsed / 30.0)
+
+    Arguments: base_weight first, days_elapsed second.
     """
     factor = min(2.0, 1.0 + float(days_elapsed) / 30.0)
     return base_weight * factor
@@ -2015,17 +2021,22 @@ def _effective_weight(
     inputs_seen: int,
     total_inputs: int,
     degree: int,
-    is_sensitive: int,
+    is_sensitive: int = 0,
+    reinforcement_count: int = 1,
+    src_times_seen: int = 1,
+    fan_dilution: float = 1.0,
 ) -> float:
     """
     Three-axis effective weight (pre-computed days_since passed by caller):
       Axis 1 Distance:    power-law decay (Wixted 2004)
       Axis 2 Size:        TF-IDF downweight (Sparck Jones 1972)
       Axis 3 Complexity:  fan effect (Anderson 1983 ACT-R)
-    + PPMI approximation (Bullinaria & Levy 2007)
+    + PPMI approximation using reinforcement_count (Bullinaria & Levy 2007)
 
     Caller is responsible for computing days_since from last_reinforced.
-    This keeps the function pure and directly testable with specific day values.
+    reinforcement_count: edge times_seen (how many times this link was reinforced).
+    src_times_seen:      source node times_seen (accepted for caller convenience).
+    fan_dilution:        pre-computed fan dilution factor (default 1.0).
     """
     if base_weight <= 0:
         return 0.0
@@ -2037,9 +2048,9 @@ def _effective_weight(
     axis2 = axis1 * (1.0 + math.log(1 + times_seen)) * idf
 
     fan = max(1, degree)
-    axis3 = axis2 / math.sqrt(fan)
+    axis3 = axis2 * fan_dilution / math.sqrt(fan)
 
-    ppmi_approx = math.log(1.0 + times_seen / max(fan, 1))
+    ppmi_approx = math.log(1.0 + reinforcement_count / max(fan, 1))
     combined = axis3 * (1.0 + ppmi_approx)
 
     return min(1.0, max(0.0, combined))
