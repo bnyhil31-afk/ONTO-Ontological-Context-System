@@ -123,17 +123,21 @@ def _resolve_session(authorization: Optional[str]) -> Optional[Dict[str, Any]]:
     return session_manager.validate(token)
 
 
-def _require_session(authorization: Optional[str]) -> Dict[str, Any]:
+def _require_session(authorization: Optional[str]) -> Optional[Dict[str, Any]]:
     """
-    Resolve session or raise a clear error. Used by all authenticated tools.
+    Resolve session or return None. Used by all authenticated tools.
+    Returns None if not authenticated — callers check and return _error().
+    Does NOT raise — raising outside a try/except causes uncaught errors.
     """
-    session = _resolve_session(authorization)
-    if not session:
-        raise ValueError(
-            "Authentication required. "
-            "Provide a valid session token as: Authorization: Bearer <token>"
-        )
-    return session
+    return _resolve_session(authorization)
+
+
+def _auth_error() -> Dict[str, Any]:
+    """Standard error envelope for failed authentication."""
+    return _error(
+        "Authentication required. "
+        "Provide a valid session token as: Authorization: Bearer <token>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +225,24 @@ def _crisis(
 # PRIVATE: AUDIT HELPERS
 # ---------------------------------------------------------------------------
 
+def _record_id(record: Any) -> Optional[int]:
+    """
+    Safely extract an integer record ID from memory.record() return value.
+    memory.record() may return an int directly or a dict with an 'id' key
+    depending on the version — this handles both without AttributeError.
+    """
+    if record is None:
+        return None
+    if isinstance(record, int):
+        return record
+    if isinstance(record, dict):
+        return record.get("id")
+    try:
+        return int(record)
+    except (TypeError, ValueError):
+        return None
+
+
 def _pre_record(tool_name: str, session_hash: str) -> Optional[int]:
     """
     Write a pre-execution record to the audit trail.
@@ -237,7 +259,7 @@ def _pre_record(tool_name: str, session_hash: str) -> Optional[int]:
                 "timestamp": time.time(),
             },
         )
-        return record.get("id") if record else None
+        return _record_id(record)
     except Exception:
         return None
 
@@ -335,6 +357,8 @@ if _FASTMCP_AVAILABLE:
             status="pending_checkpoint" if human decision required.
         """
         session = _require_session(authorization)
+        if not session:
+            return _auth_error()
         s_hash = _session_hash(session)
         pre_id = _pre_record("onto_ingest", s_hash)
 
@@ -352,7 +376,7 @@ if _FASTMCP_AVAILABLE:
                     context={"tool": "onto_ingest", "session": s_hash},
                 )
                 audit_id = (
-                    audit_record.get("id") if audit_record else pre_id
+                    _record_id(audit_record) or pre_id
                 )
                 _post_record("onto_ingest", s_hash, "crisis", pre_id)
                 return _crisis(audit_id=audit_id)
@@ -375,7 +399,7 @@ if _FASTMCP_AVAILABLE:
                     "session": s_hash,
                 },
             )
-            audit_id = record.get("id") if record else pre_id
+            audit_id = _record_id(record) or pre_id
 
             _post_record("onto_ingest", s_hash, "ok", pre_id)
             return _ok(
@@ -441,6 +465,8 @@ if _FASTMCP_AVAILABLE:
             metadata including hardware tier and PPR availability.
         """
         session = _require_session(authorization)
+        if not session:
+            return _auth_error()
         s_hash = _session_hash(session)
         pre_id = _pre_record("onto_query", s_hash)
 
@@ -520,7 +546,7 @@ if _FASTMCP_AVAILABLE:
                     "session": s_hash,
                 },
             )
-            audit_id = record.get("id") if record else pre_id
+            audit_id = _record_id(record) or pre_id
 
             _post_record("onto_query", s_hash, "ok", pre_id)
             return _ok(
@@ -573,6 +599,8 @@ if _FASTMCP_AVAILABLE:
             bias flags, wellbeing safety status.
         """
         session = _require_session(authorization)
+        if not session:
+            return _auth_error()
         s_hash = _session_hash(session)
         pre_id = _pre_record("onto_surface", s_hash)
 
@@ -669,6 +697,8 @@ if _FASTMCP_AVAILABLE:
             audit_reference_id:  ID of the related audit record, if any.
         """
         session = _require_session(authorization)
+        if not session:
+            return _auth_error()
         s_hash = _session_hash(session)
         pre_id = _pre_record("onto_checkpoint", s_hash)
 
@@ -718,7 +748,7 @@ if _FASTMCP_AVAILABLE:
             },
             human_decision=decision,
         )
-        audit_id = record.get("id") if record else pre_id
+        audit_id = _record_id(record) or pre_id
 
         _post_record("onto_checkpoint", s_hash, decision, pre_id)
         return _ok(
@@ -764,6 +794,8 @@ if _FASTMCP_AVAILABLE:
             Edge creation result including node IDs and provenance ID.
         """
         session = _require_session(authorization)
+        if not session:
+            return _auth_error()
         s_hash = _session_hash(session)
         pre_id = _pre_record("onto_relate", s_hash)
 
@@ -810,7 +842,7 @@ if _FASTMCP_AVAILABLE:
                     "session": s_hash,
                 },
             )
-            audit_id = record.get("id") if record else pre_id
+            audit_id = _record_id(record) or pre_id
 
             _post_record("onto_relate", s_hash, "ok", pre_id)
             return _ok(
