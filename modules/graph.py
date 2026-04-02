@@ -634,22 +634,38 @@ def initialize() -> None:
             # -----------------------------------------------------------------
             _EDGE_TYPES = [
                 # (id, name, category, inverse_id, description, is_directed)
-                (1,  "related-to",     "associative",  None, "General association (SKOS skos:related)",          0),
-                (2,  "co-occurs-with", "associative",  None, "Statistical co-occurrence (ONTO native, default)", 0),
-                (3,  "is-a",           "taxonomic",    4,    "Subclass/subtype (RDFS rdfs:subClassOf)",          1),
-                (4,  "has-subtype",    "taxonomic",    3,    "Inverse of is-a",                                  1),
-                (5,  "instance-of",    "taxonomic",    6,    "Instance of a class (OWL classAssertion)",         1),
-                (6,  "has-instance",   "taxonomic",    5,    "Inverse of instance-of",                           1),
-                (7,  "part-of",        "mereological", 8,    "Constituent part (BFO RO:0001001)",                1),
-                (8,  "has-part",       "mereological", 7,    "Inverse of part-of",                               1),
-                (9,  "causes",         "causal",       10,   "Causal relationship (RO:0002410)",                 1),
-                (10, "caused-by",      "causal",       9,    "Inverse of causes",                                1),
-                (11, "precedes",       "temporal",     12,   "Temporal precedence (OWL-Time time:before)",       1),
-                (12, "follows",        "temporal",     11,   "Inverse of precedes",                              1),
-                (13, "located-in",     "spatial",      14,   "Spatial containment (GeoSPARQL)",                  1),
-                (14, "contains",       "spatial",      13,   "Inverse of located-in",                            1),
-                (15, "supports",       "epistemic",    16,   "Evidential support (ONTO native)",                 1),
-                (16, "supported-by",   "epistemic",    15,   "Inverse of supports",                              1),
+                (1,  "related-to",   "associative",  None,
+                 "General association (SKOS skos:related)", 0),
+                (2,  "co-occurs-with", "associative", None,
+                 "Statistical co-occurrence (ONTO native, default)", 0),
+                (3,  "is-a",         "taxonomic",    4,
+                 "Subclass/subtype (RDFS rdfs:subClassOf)", 1),
+                (4,  "has-subtype",  "taxonomic",    3,
+                 "Inverse of is-a", 1),
+                (5,  "instance-of",  "taxonomic",    6,
+                 "Instance of a class (OWL classAssertion)", 1),
+                (6,  "has-instance", "taxonomic",    5,
+                 "Inverse of instance-of", 1),
+                (7,  "part-of",      "mereological", 8,
+                 "Constituent part (BFO RO:0001001)", 1),
+                (8,  "has-part",     "mereological", 7,
+                 "Inverse of part-of", 1),
+                (9,  "causes",       "causal",       10,
+                 "Causal relationship (RO:0002410)", 1),
+                (10, "caused-by",    "causal",       9,
+                 "Inverse of causes", 1),
+                (11, "precedes",     "temporal",     12,
+                 "Temporal precedence (OWL-Time)", 1),
+                (12, "follows",      "temporal",     11,
+                 "Inverse of precedes", 1),
+                (13, "located-in",   "spatial",      14,
+                 "Spatial containment (GeoSPARQL)", 1),
+                (14, "contains",     "spatial",      13,
+                 "Inverse of located-in", 1),
+                (15, "supports",     "epistemic",    16,
+                 "Evidential support (ONTO native)", 1),
+                (16, "supported-by", "epistemic",    15,
+                 "Inverse of supports", 1),
             ]
             # Pass 1: insert all rows without inverse_id to avoid self-referential
             # FK violations (e.g. inserting id=3 with inverse_id=4 before id=4 exists).
@@ -758,7 +774,7 @@ def initialize() -> None:
                  0.85, 3600,   "realtime",  0, "general", None),
                 ("personal", "Personal knowledge assistant",
                  0.97, 43200,  "personal",  0, "GDPR",    None),
-                ("financial","Financial services regulatory retention",
+                ("financial", "Financial services regulatory retention",
                  0.98, 86400,  "financial", 0, "GLBA",    2555),
             ]
             for p in _PROFILES:
@@ -1548,7 +1564,10 @@ def prune(threshold: Optional[float] = None) -> Dict[str, int]:
         try:
             _memory.record(
                 event_type="GRAPH_PRUNE",
-                notes=f"{edges_pruned} edges soft-deleted below PPMI threshold {prune_threshold}.",
+                notes=(
+                        f"{edges_pruned} edges soft-deleted "
+                        f"below PPMI threshold {prune_threshold}."
+                    ),
                 context={
                     "edges_pruned": edges_pruned,
                     "threshold": prune_threshold,
@@ -1888,7 +1907,8 @@ def _upsert_node(
     Phase 1: attaches provenance_id when creating new nodes.
     """
     existing = conn.execute(
-        "SELECT id, times_seen, inputs_seen, last_reinforced FROM graph_nodes WHERE concept = ?",
+        "SELECT id, times_seen, inputs_seen, last_reinforced "
+        "FROM graph_nodes WHERE concept = ?",
         (concept,),
     ).fetchone()
 
