@@ -20,6 +20,10 @@ Encryption (item 2.01):
   and the session file is removed. Development mode (the default) skips
   this entirely — no passphrase required, no encryption.
 """
+import sys as _sys
+if _sys.platform == "win32":
+    _sys.stdout.reconfigure(encoding="utf-8")
+    _sys.stderr.reconfigure(encoding="utf-8")
 
 import os
 import shutil
