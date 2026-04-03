@@ -732,7 +732,7 @@ A node's identity consists of exactly two invariants:
 
 Everything else — hardware, operator, modules, data — may change without affecting identity, provided both invariants are maintained.
 
-**Identity is the pattern, not the components.** This is the autopoietic principle: a node remains itself as long as its pattern of self-organization persists. Components may be replaced. The pattern persists.
+**Identity is the pattern, not the components.** This is the autopoietically-inspired principle: a node remains itself as long as its pattern of self-organization persists. Components may be replaced. The pattern persists.
 
 Node identity is cryptographically rooted. Identity claims are independently verifiable. Nodes that cannot verify each other's identity exchange only at the lowest trust tier.
 
