@@ -272,6 +272,13 @@ class LocalAdapter:
         """Gate: called before any data leaves this node."""
         from api.federation.safety import check_outbound
         from api.federation.consent import is_valid
+        # is_valid(consent_id, recipient_node) → (bool, str)
+        valid_result = is_valid(consent_id, peer.node_id)
+        has_consent = (
+            valid_result[0]
+            if isinstance(valid_result, tuple)
+            else bool(valid_result)
+        )
         return check_outbound(
             text=text,
             classification=classification,
@@ -280,7 +287,7 @@ class LocalAdapter:
             peer_trust_score=peer.trust_score,
             peer_data_residency=peer.data_residency,
             consent_id=consent_id,
-            has_valid_consent=is_valid(consent_id),
+            has_valid_consent=has_consent,
         )
 
     def can_receive(
