@@ -1,6 +1,6 @@
 # ONTO Test Suite
 
-Tests: **315** always passing + **42** MCP (Python 3.10+ only) + **69** Federation
+Tests: **315** always passing + **42** MCP (Python 3.10+ only) + **69** Federation + **57** Consent Ledger
 CI: green ✅ across Python 3.9–3.12
 
 Rule 1.09A: Any change to the test suite requires updating three things
@@ -22,6 +22,7 @@ Run a specific suite:
 pytest tests/test_graph_phase1.py -v   # Phase 1 ontology core
 pytest tests/test_mcp.py -v            # Phase 2 MCP interface
 pytest tests/test_federation.py -v    # Phase 3 federation
+pytest tests/test_consent.py -v       # Phase 4 consent ledger
 ```
 
 ---
@@ -91,8 +92,7 @@ on Python 3.9. See skip behaviour section below.
 
 Class                      | Tests | What it covers
 ---------------------------|-------|--------------------------------------------
-TestResponseEnvelope       |   5   | Envelope shape: ok, error, pending, crisis.
-                           |       | schema_version always "1.0"
+TestResponseEnvelope       |   5   | Envelope shape: ok, error, pending, crisis
 TestSessionResolution      |   5   | Bearer token parsing, valid/invalid/missing
 TestOntoIngest             |   6   | Nodes created, concepts returned, crisis
                            |       | never writes to graph, auth rejected
@@ -148,6 +148,42 @@ TestAuditIntegrity         |   3   | Consent grant/revoke write audit events,
 TestOfflineSovereignty     |   2   | recall() revokes locally before peer notify,
                            |       | returns list even when peer unreachable
 
+### tests/test_consent.py — Phase 4 Consent Ledger (57 tests)
+
+Safety-critical classes are marked ⚠️. They block deployment if they
+fail, even if all other tests pass.
+
+Class                      | Tests | What it covers
+---------------------------|-------|--------------------------------------------
+⚠️ TestConsentAbsoluteBarriers| 6  | Crisis flag always blocked, crisis text always
+                           |       | blocked, classification 4+ always blocked,
+                           |       | valid consent cannot bypass absolute barrier
+⚠️ TestConsentGate         |   9   | Self-access permitted, no consent triggers
+                           |       | checkpoint, active consent permits, revoked
+                           |       | blocked, expired blocked, wrong operation
+                           |       | blocked, consent disabled permits all,
+                           |       | audit-only permits but logs, never raises
+TestConsentLedger          |   8   | Grant returns UUID, revoke marks inactive,
+                           |       | unknown ID returns False, cascade revocation,
+                           |       | history newest first, excludes revoked,
+                           |       | grant/revoke write audit events
+TestRegulatoryProfiles     |   7   | Team/healthcare/financial profiles load,
+                           |       | HIPAA fields required, GLBA opt-out flag,
+                           |       | unknown profile fallback, validation,
+                           |       | retention lock financial
+TestGLBAOptOut             |   2   | No opt-out permits, opt-out record blocks
+TestVCServiceInterface     |   5   | NullVCService returns None/False/{},
+                           |       | get_vc_service returns Null by default
+TestSchemaJSONLD           |   4   | JSON-LD structure, VC envelope, DPV purposes,
+                           |       | legal bases vocabularies complete
+TestStatusListAllocation   |   4   | First index=0, increments, grant assigns
+                           |       | index, encode/decode roundtrip
+TestMigration              |   5   | consent_ledger and consent_requests tables,
+                           |       | core tables unchanged, idempotent, all columns
+TestConsentRecordDataclass |   7   | is_active fresh/revoked/expired,
+                           |       | needs_reconfirmation, timed consent false,
+                           |       | ConsentDecision bool, to_dict JSON-safe
+
 ### tests/test_session.py — Session management (17 tests)
 
 Session creation, validation, rotation, termination, audit trail.
@@ -158,15 +194,15 @@ Passphrase setup, Argon2id verification, lockout, dev mode.
 
 ---
 
-## Skip behaviour by version
+## Skip behaviour by Python version
 
-| Python | Always | MCP | Federation | Total |
-|--------|--------|-----|------------|-------|
-| 3.9    | 315    |  0  |    69      | 384   |
-| 3.10+  | 315    |  42 |    69      | 426   |
+| Python | Always | MCP | Federation | Consent | Total |
+|--------|--------|-----|------------|---------|-------|
+| 3.9    | 315    |  0  |    69      |   57    | 441   |
+| 3.10+  | 315    |  42 |    69      |   57    | 483   |
 
 MCP tests skip on 3.9 (fastmcp requires Python >=3.10).
-Federation tests run on all versions — no network required.
+All other tests run on all versions — no network required.
 Skipped tests are not failures. CI is green on all versions.
 
 ---
