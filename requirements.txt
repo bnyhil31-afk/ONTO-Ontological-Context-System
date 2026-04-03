@@ -1,0 +1,41 @@
+# ONTO — Runtime Dependencies
+#
+# Core system: runs on Python standard library only.
+# No packages below are required to start ONTO and use the basic loop.
+#
+# Install recommended packages for full functionality:
+#   pip install -r requirements.txt
+#
+# Install test packages to run the test suite:
+#   pip install -r requirements-test.txt
+
+# ── ENCRYPTION & AUTHENTICATION (recommended) ────────────────────────────────
+# Required for AUTH_REQUIRED=true and database encryption.
+# The system runs in development mode without these.
+cryptography>=41.0.0
+argon2-cffi>=21.3.0
+
+# ── HTTP API SERVER (optional) ───────────────────────────────────────────────
+# Required only if you use the FastAPI HTTP interface (api/main.py).
+# Not needed for the command-line interface (main.py).
+fastapi>=0.115.0
+uvicorn>=0.32.0
+
+# ── GRAPH ANALYTICS (optional) ───────────────────────────────────────────────
+# Required for Personalized PageRank on large graphs (200+ nodes).
+# The system falls back to BFS automatically if not installed.
+fast-pagerank>=0.0.4
+scipy>=1.11.0
+psutil>=5.9.0
+
+# ── MCP INTERFACE (optional, Python 3.10+ only) ──────────────────────────────
+# Required for AI system integration (Claude, GPT, etc.) via MCP.
+# Skip on Python 3.9.
+fastmcp>=2.0.0; python_version >= "3.10"
+
+# ── FEDERATION (optional) ────────────────────────────────────────────────────
+# Required for Phase 3 federation between ONTO nodes.
+# Skip if running a single node.
+zeroconf>=0.131.0
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
