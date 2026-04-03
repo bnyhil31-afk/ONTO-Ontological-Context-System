@@ -6,6 +6,105 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Phase 3: Federation
+
+### Added
+
+- **`api/federation/`** — Complete federation package (13 modules).
+  ONTO nodes can now discover peers, exchange signed capability manifests,
+  share graph context with explicit consent, recall any share (data
+  sovereignty preserved even when peers are offline), and monitor the
+  network for concentration signals. All federation behavior is an addon —
+  no existing file was modified by Phase 3.
+
+  Core modules:
+  - `config.py` — All federation env vars in one place. Safe defaults.
+    Every toggle defaults to the most restrictive option.
+  - `safety.py` — Absolute barriers (crisis content and classification 4+
+    never cross node boundaries under any configuration) + configurable
+    controls. Safety-critical: TestAbsoluteBarriers and
+    TestFederationSafetyFilter block deployment if they fail.
+  - `node_identity.py` — did:key (Ed25519) node identity. Private key
+    stored in a separate encrypted file, never in SQLite. JCS-canonical
+    JSON signing (RFC 8785). verify() returns bool, never raises.
+  - `peer_store.py` — TOFU (Trust On First Use) certificate pinning.
+    Cert changes require operator approval via onto_checkpoint.
+  - `consent.py` — Full consent ledger: grant, revoke, reconfirm.
+    Standing consents require re-confirmation every 90 days. W3C VC
+    fields present in schema for Phase 5 activation.
+  - `crdt.py` — VectorClock, ORSet (add-wins), LWWRegister, GSet,
+    PNCounter. Conflict detection via vector clock comparison (not
+    timestamps). Concurrent writes produce ConflictInfo for human
+    resolution via onto_checkpoint. Standalone helper functions
+    (vclock_compare, merge_node_sets, merge_edge_weights) wrap the
+    class-based API.
+  - `audit.py` — federation_outbox and federation_inbox messaging tables.
+    Sequence numbers per recipient, rate limiting with exponential
+    backoff, inbox/outbox pattern. Failed sends are operator-initiated
+    retry only (no automatic retry).
+  - `adapter.py` — FederationAdapter protocol + NodeInfo dataclass.
+    Pure protocol definition, importable without any federation deps.
+    @runtime_checkable. The single swap point for all federation behavior.
+  - `capability.py` — Capability manifest creation (VoID descriptor +
+    ONTO-specific fields), JCS signing, verification. crisis_barrier
+    is always True — hardcoded, not configurable.
+  - `local.py` — LocalAdapter: direct connection, no discovery. Manual
+    peer configuration via ONTO_FED_PEERS. Phase 3 transport: JSON over
+    HTTP (Phase 4 upgrade: gRPC + mTLS, grpcio already in deps).
+  - `intranet.py` — IntranetAdapter extends LocalAdapter with mDNS
+    discovery via python-zeroconf. Service type: _onto._tcp.local.
+    Graceful fallback to static peers if zeroconf not installed.
+  - `manager.py` — FederationManager singleton (analogous to
+    session_manager). Boot integration: two lines in main.py, no
+    modification to main.py required. is_enabled() never raises.
+    Full lifecycle: start, stop, status_summary for onto_status.
+  - `__init__.py` — Graceful dep check. Phase 3 required: zeroconf,
+    grpcio. Phase 4 optional: crdts, kademlia.
+
+- **`docs/FEDERATION-SPEC-001.md`** — Design specification v1.1.
+  Full risk register (legal, safety, security, sovereignty) shapes every
+  architectural decision. Part XIV decisions locked before coding:
+  local + intranet in Phase 3; max_share_classification=2; standing
+  consent without W3C VC acceptable; self-signed TOFU certs (Option A);
+  anti-concentration opt-in (1.0 default).
+
+- **`docs/FEDERATION.md`** — Operator guide. Setup, configuration
+  reference, data classification ceilings, consent modes, trust scores,
+  certificate pinning, health monitoring, regulated environment guidance,
+  troubleshooting.
+
+- **`tests/test_federation.py`** — 69 tests across 16 classes.
+  Safety-critical: TestAbsoluteBarriers (6 tests — crisis and
+  classification 4+ absolute barriers), TestFederationSafetyFilter
+  (5 tests — full outbound/inbound safety logic). Other classes:
+  TestNodeIdentity, TestCapabilityManifest, TestConsentLedger,
+  TestPeerStore, TestVectorClocks, TestCRDTMerge, TestLocalAdapter,
+  TestIntranetAdapter, TestFederationManager, TestMessaging,
+  TestMigration, TestConcentrationDetection, TestAuditIntegrity,
+  TestOfflineSovereignty.
+
+### Changed
+
+- **`requirements-test.txt`** — Added zeroconf, grpcio, grpcio-tools
+  (Phase 3 federation); crdts listed as Phase 4 optional.
+
+- **`docs/ONTO_PreLaunch_Checklist.txt`** — Updated to v13.
+  Items 9.01–9.12 marked complete. Test count updated to 424.
+
+- **`tests/README.md`** — Updated to reflect 424 total tests
+  (315 always + 42 MCP + 69 federation). Skip table by Python version.
+  test_federation.py section with all 16 class descriptions.
+
+### Notes
+
+Federation transport in Phase 3 is plain HTTP (JSON over TCP). Full
+gRPC + mTLS is Phase 4 — grpcio is installed and in deps, the
+FederationAdapter protocol is the swap point, no other files change.
+Operators should not expose the federation port beyond the local network
+until Phase 4 transport is complete.
+
+---
+
 ## [Unreleased] — Phase 1: Ontology Core v2
 
 ### Added
