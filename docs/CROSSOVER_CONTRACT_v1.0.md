@@ -481,7 +481,7 @@ Self-preservation is nested and interdependent. A module that preserves itself a
 
 A node remains itself as long as its two identity invariants are maintained — sealed principles and unbroken audit trail. Components may be replaced. Hardware may change. Operators may change. The node persists as the same identity provided the pattern that defines it persists.
 
-This is the autopoietic principle: identity is located in the pattern of self-organization, not in the specific components that instantiate it at any moment.
+This is the autopoietically-inspired principle: identity is located in the pattern of self-organization, not in the specific components that instantiate it at any moment.
 
 ---
 
