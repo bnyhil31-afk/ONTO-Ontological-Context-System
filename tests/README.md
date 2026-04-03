@@ -1,6 +1,6 @@
 # ONTO Test Suite
 
-Tests: **315** always passing + **42** MCP tests (Python 3.10+ only)
+Tests: **315** always passing + **42** MCP (Python 3.10+ only) + **69** Federation
 CI: green ✅ across Python 3.9–3.12
 
 Rule 1.09A: Any change to the test suite requires updating three things
@@ -16,11 +16,12 @@ pip install -r requirements-test.txt
 pytest tests/ -v
 ```
 
-Run only a specific suite:
+Run a specific suite:
 
 ```bash
 pytest tests/test_graph_phase1.py -v   # Phase 1 ontology core
 pytest tests/test_mcp.py -v            # Phase 2 MCP interface
+pytest tests/test_federation.py -v    # Phase 3 federation
 ```
 
 ---
@@ -86,44 +87,66 @@ TestForwardCompat          |   7   | All P2/P3/P4 columns present and NULL on
 ### tests/test_mcp.py — Phase 2 MCP Interface (42 tests)
 
 Requires Python 3.10+ and `fastmcp>=2.0.0`. All 42 tests skip gracefully
-on Python 3.9 — the rest of the suite is unaffected. See skip behaviour
-section below.
-
-Tools are tested by calling the decorated Python functions directly,
-without a live MCP transport. Session auth is mocked so tests run
-without a running ONTO server or live credentials.
+on Python 3.9. See skip behaviour section below.
 
 Class                      | Tests | What it covers
 ---------------------------|-------|--------------------------------------------
-TestResponseEnvelope       |   5   | Every envelope shape: ok, error,
-                           |       | pending_checkpoint, crisis. schema_version
-                           |       | always present and equal to "1.0"
-TestSessionResolution      |   5   | Bearer token parsing, valid session resolves,
-                           |       | missing / non-Bearer / invalid token
-                           |       | returns None, _require_session safe to call
-TestOntoIngest             |   6   | Nodes and edges created, concepts in result,
-                           |       | provenance_id returned, crisis input never
-                           |       | writes to graph, rejected without auth
-TestOntoQuery              |   5   | Known concepts return ok, unknown concepts
-                           |       | return ok with warning (not an error),
-                           |       | alpha clamped to [0.70, 0.95], subgraph
-                           |       | keys present, rejected without auth
+TestResponseEnvelope       |   5   | Envelope shape: ok, error, pending, crisis.
+                           |       | schema_version always "1.0"
+TestSessionResolution      |   5   | Bearer token parsing, valid/invalid/missing
+TestOntoIngest             |   6   | Nodes created, concepts returned, crisis
+                           |       | never writes to graph, auth rejected
+TestOntoQuery              |   5   | Known/unknown seeds, alpha clamped,
+                           |       | subgraph keys, auth rejected
 TestOntoSurface            |   4   | Confidence returned, classification present,
-                           |       | crisis input returns crisis status,
-                           |       | rejected without auth
-TestOntoCheckpoint         |   6   | No decision → pending_checkpoint with
-                           |       | automation bias warning (EU AI Act Art 14),
-                           |       | proceed authorizes, veto halts action,
-                           |       | invalid decision → error with valid options,
-                           |       | all four valid decisions accepted
-TestOntoRelate             |   5   | Nodes created for both concepts, empty source
-                           |       | or target → error, crisis content → crisis
-                           |       | status (never stored), rejected without auth
-TestOntoSchema             |   3   | Exactly 16 edge types, all 7 categories
-                           |       | present, schema_version = "1.0"
-TestOntoStatus             |   3   | status=healthy, graph metrics present
-                           |       | (nodes/edges/inputs), PPR info present
-                           |       | with hardware_tier
+                           |       | crisis status, auth rejected
+TestOntoCheckpoint         |   6   | Pending with bias warning, proceed/veto,
+                           |       | invalid decision, all 4 decisions accepted
+TestOntoRelate             |   5   | Nodes created, empty inputs → error,
+                           |       | crisis content → crisis, auth rejected
+TestOntoSchema             |   3   | 16 types, 7 categories, schema_version
+TestOntoStatus             |   3   | status=healthy, graph metrics, PPR info
+
+### tests/test_federation.py — Phase 3 Federation (69 tests)
+
+Safety-critical classes are marked ⚠️. They block deployment if they
+fail, even if all other tests pass.
+
+Class                      | Tests | What it covers
+---------------------------|-------|--------------------------------------------
+⚠️ TestAbsoluteBarriers    |   6   | Crisis text always blocked, is_crisis=True
+                           |       | always blocked, classification 4+ always
+                           |       | blocked, nested field scanning
+⚠️ TestFederationSafetyFilter|  5  | Valid data passes, no consent blocks,
+                           |       | classification ceiling, sensitive low-trust,
+                           |       | inbound trust capped at floor
+TestNodeIdentity           |   5   | did:key format, key in file not SQLite,
+                           |       | sign/verify roundtrip, load existing key
+TestCapabilityManifest     |   4   | Required fields, crisis_barrier=True always,
+                           |       | verify valid, verify tampered fails
+TestConsentLedger          |   6   | Grant returns UUID, active valid, revoke,
+                           |       | expired, standing reconfirmation, peer list
+TestPeerStore              |   4   | Hash not PEM, valid cert, cert_changed,
+                           |       | approve increments rotation_count
+TestVectorClocks           |   5   | Equal, A dominates, B dominates, concurrent,
+                           |       | merge is component-wise max
+TestCRDTMerge              |   5   | ORSet add-wins, LWW causal order, GSet union,
+                           |       | remote-only nodes added, concurrent conflict
+TestLocalAdapter           |   6   | Crisis always false, class 4 always false,
+                           |       | trust capped, discover, merge, health keys
+TestIntranetAdapter        |   3   | Extends LocalAdapter, mdns_active in health,
+                           |       | static peers in discover
+TestFederationManager      |   5   | is_enabled false, never raises, get_adapter
+                           |       | None before start, tables created, stop safe
+TestMessaging              |   4   | First seq=1, increments, gap detected,
+                           |       | rate limit blocks excess
+TestMigration              |   4   | All 5 federation tables created, core tables
+                           |       | unchanged, graph_nodes unchanged, idempotent
+TestConcentrationDetection |   2   | Identical graphs=1.0, disjoint=0.0
+TestAuditIntegrity         |   3   | Consent grant/revoke write audit events,
+                           |       | peer pin writes audit event
+TestOfflineSovereignty     |   2   | recall() revokes locally before peer notify,
+                           |       | returns list even when peer unreachable
 
 ### tests/test_session.py — Session management (17 tests)
 
@@ -135,25 +158,15 @@ Passphrase setup, Argon2id verification, lockout, dev mode.
 
 ---
 
-## MCP test skip behaviour
+## Skip behaviour by version
 
-On Python 3.9, FastMCP is not installed (a version marker in
-`requirements-test.txt` restricts it to Python >=3.10). Every class in
-`test_mcp.py` is decorated with:
+| Python | Always | MCP | Federation | Total |
+|--------|--------|-----|------------|-------|
+| 3.9    | 315    |  0  |    69      | 384   |
+| 3.10+  | 315    |  42 |    69      | 426   |
 
-```python
-@unittest.skipUnless(_FASTMCP_INSTALLED, "fastmcp not installed ...")
-```
-
-Result by Python version:
-
-| Python | Tests run | Tests skipped | Total reported |
-|--------|-----------|---------------|----------------|
-| 3.9    | 315       | 42            | 357 (42 skip)  |
-| 3.10   | 357       | 0             | 357            |
-| 3.11   | 357       | 0             | 357            |
-| 3.12   | 357       | 0             | 357            |
-
+MCP tests skip on 3.9 (fastmcp requires Python >=3.10).
+Federation tests run on all versions — no network required.
 Skipped tests are not failures. CI is green on all versions.
 
 ---
