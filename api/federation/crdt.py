@@ -328,3 +328,172 @@ def detect_conflict(
         return "remote_wins"
 
     return "concurrent"
+
+
+# ---------------------------------------------------------------------------
+# STANDALONE HELPERS
+# Thin wrappers over the class-based API above.
+# These enable functional-style usage and backwards-compatible imports.
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+# Comparison result constants
+EQUAL      = "equal"
+A_DOMINATES = "a_dominates"
+B_DOMINATES = "b_dominates"
+CONCURRENT  = "concurrent"
+
+
+def vclock_compare(
+    vc_a: Dict[str, int],
+    vc_b: Dict[str, int],
+) -> str:
+    """
+    Compare two vector clocks represented as plain dicts.
+    Returns one of: EQUAL, A_DOMINATES, B_DOMINATES, CONCURRENT.
+    """
+    a = VectorClock.from_dict(vc_a)
+    b = VectorClock.from_dict(vc_b)
+    if a == b:
+        return EQUAL
+    if a.dominates(b):
+        return A_DOMINATES
+    if b.dominates(a):
+        return B_DOMINATES
+    return CONCURRENT
+
+
+def vclock_merge(
+    vc_a: Dict[str, int],
+    vc_b: Dict[str, int],
+) -> Dict[str, int]:
+    """Return the component-wise maximum of two vector clock dicts."""
+    return VectorClock.from_dict(vc_a).merge(
+        VectorClock.from_dict(vc_b)
+    ).to_dict()
+
+
+def vclock_to_json(vc: Dict[str, int]) -> str:
+    """Serialize a vector clock dict to a canonical JSON string."""
+    return _json.dumps(vc, sort_keys=True)
+
+
+def vclock_from_json(s: Optional[str]) -> Dict[str, int]:
+    """Deserialize a JSON string to a vector clock dict. Returns {} on error."""
+    if not s:
+        return {}
+    try:
+        result = _json.loads(s)
+        return {str(k): int(v) for k, v in result.items()}
+    except Exception:
+        return {}
+
+
+class ConflictInfo:
+    """Describes a concurrent write conflict requiring human resolution."""
+
+    def __init__(
+        self,
+        conflict_type: str,
+        entity_id: str,
+        local_value: Any,
+        remote_value: Any,
+        local_vclock: Dict[str, int],
+        remote_vclock: Dict[str, int],
+    ) -> None:
+        self.conflict_type  = conflict_type
+        self.entity_id      = entity_id
+        self.local_value    = local_value
+        self.remote_value   = remote_value
+        self.local_vclock   = local_vclock
+        self.remote_vclock  = remote_vclock
+
+    def to_dict(self) -> dict:
+        return {
+            "conflict_type": self.conflict_type,
+            "entity_id":     self.entity_id,
+            "local_value":   self.local_value,
+            "remote_value":  self.remote_value,
+            "local_vclock":  self.local_vclock,
+            "remote_vclock": self.remote_vclock,
+        }
+
+
+def merge_node_sets(
+    local_nodes: Dict[str, dict],
+    remote_nodes: Dict[str, dict],
+) -> Tuple[Dict[str, dict], list]:
+    """
+    Merge two node dicts using OR-Set add-wins semantics and vector clocks.
+    Returns (merged_nodes, conflict_list).
+    Conflicts are ConflictInfo objects — caller escalates to onto_checkpoint.
+    """
+    merged: Dict[str, dict] = dict(local_nodes)
+    conflicts: list = []
+
+    for concept, remote_data in remote_nodes.items():
+        if concept not in local_nodes:
+            merged[concept] = remote_data
+            continue
+
+        local_data  = local_nodes[concept]
+        local_vc    = vclock_from_json(local_data.get("vector_clock"))
+        remote_vc   = vclock_from_json(remote_data.get("vector_clock"))
+        result      = vclock_compare(local_vc, remote_vc)
+
+        if result == B_DOMINATES:
+            merged[concept] = remote_data
+        elif result == CONCURRENT:
+            conflicts.append(ConflictInfo(
+                conflict_type="node_weight",
+                entity_id=concept,
+                local_value=local_data.get("weight"),
+                remote_value=remote_data.get("weight"),
+                local_vclock=local_vc,
+                remote_vclock=remote_vc,
+            ))
+            # Optimistic default: keep local until operator resolves
+
+    return merged, conflicts
+
+
+def merge_edge_weights(
+    local_edges: Dict[str, dict],
+    remote_edges: Dict[str, dict],
+) -> Tuple[Dict[str, dict], list]:
+    """
+    Merge two edge dicts using LWW-Register semantics and vector clocks.
+    Returns (merged_edges, conflict_list).
+    Concurrent writes use timestamp as a tiebreaker (scalar values only).
+    """
+    merged: Dict[str, dict] = dict(local_edges)
+    conflicts: list = []
+
+    for edge_key, remote_data in remote_edges.items():
+        if edge_key not in local_edges:
+            merged[edge_key] = remote_data
+            continue
+
+        local_data  = local_edges[edge_key]
+        local_vc    = vclock_from_json(local_data.get("vector_clock"))
+        remote_vc   = vclock_from_json(remote_data.get("vector_clock"))
+        result      = vclock_compare(local_vc, remote_vc)
+
+        if result == B_DOMINATES:
+            merged[edge_key] = remote_data
+        elif result == CONCURRENT:
+            conflicts.append(ConflictInfo(
+                conflict_type="edge_weight",
+                entity_id=edge_key,
+                local_value=local_data.get("weight"),
+                remote_value=remote_data.get("weight"),
+                local_vclock=local_vc,
+                remote_vclock=remote_vc,
+            ))
+            # Timestamp tiebreaker for scalar edge weights
+            if remote_data.get("last_reinforced", 0.0) > \
+               local_data.get("last_reinforced", 0.0):
+                merged[edge_key] = remote_data
+
+    return merged, conflicts
