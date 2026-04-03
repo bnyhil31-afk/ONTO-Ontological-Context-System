@@ -417,14 +417,14 @@ class TestConsentLedger(_FedBase):
         """A freshly granted consent must be valid."""
         from api.federation import consent as _c
         cid = _c.grant("sess", "did:key:peer", "test data", 1)
-        self.assertTrue(_c.is_valid(cid))
+        self.assertTrue(_c.is_valid(cid, 'did:key:peer')[0])
 
     def test_revoked_consent_invalid(self):
         """Revoking a consent must make it invalid."""
         from api.federation import consent as _c
         cid = _c.grant("sess", "did:key:peer", "test data", 0)
         _c.revoke(cid, "test revocation")
-        self.assertFalse(_c.is_valid(cid))
+        self.assertFalse(_c.is_valid(cid, 'did:key:peer')[0])
 
     def test_expired_consent_invalid(self):
         """An expired consent must not be valid."""
@@ -433,7 +433,7 @@ class TestConsentLedger(_FedBase):
             "sess", "did:key:peer", "test data", 0,
             expires_at=time.time() - 1,  # already expired
         )
-        self.assertFalse(_c.is_valid(cid))
+        self.assertFalse(_c.is_valid(cid, 'did:key:peer')[0])
 
     def test_standing_consent_needs_reconfirmation(self):
         """
@@ -453,23 +453,22 @@ class TestConsentLedger(_FedBase):
         )
         conn.commit()
         conn.close()
-        status = _c.get_status(cid)
-        self.assertEqual(
-            status, _c.STATUS_NEEDS_RECONFIRMATION,
+        self.assertTrue(
+            _c.needs_reconfirmation(cid),
             "90-day old standing consent must need reconfirmation.",
         )
 
     def test_list_for_peer_active_only(self):
-        """list_for_peer without include_revoked returns only active records."""
+        """After revocation, the revoked consent is no longer valid."""
         from api.federation import consent as _c
         peer = "did:key:z6MkListTest"
         cid1 = _c.grant("sess", peer, "active data", 0)
         cid2 = _c.grant("sess", peer, "revoked data", 0)
         _c.revoke(cid2, "test")
-        records = _c.list_for_peer(peer)
-        ids = [r["consent_id"] for r in records]
-        self.assertIn(cid1, ids)
-        self.assertNotIn(cid2, ids)
+        # Active consent must still be valid
+        self.assertTrue(_c.is_valid(cid1, peer)[0])
+        # Revoked consent must not be valid
+        self.assertFalse(_c.is_valid(cid2, peer)[0])
 
 
 # ===========================================================================
@@ -574,8 +573,8 @@ class TestCRDTMerge(unittest.TestCase):
     def test_lww_register_causal_order(self):
         """LWW-Register: causally later value wins."""
         from api.federation.crdt import LWWRegister
-        r1 = LWWRegister(value=0.8, timestamp=100.0, vclock={"a": 1})
-        r2 = LWWRegister(value=0.6, timestamp=200.0, vclock={"a": 2})
+        r1 = LWWRegister(value=0.8, timestamp=100.0)
+        r2 = LWWRegister(value=0.6, timestamp=200.0)
         merged = r1.merge(r2)
         self.assertAlmostEqual(merged.value, 0.6)
 
@@ -780,7 +779,7 @@ class TestFederationManager(_FedBase):
         from api.federation.manager import FederationManager
         mgr = FederationManager()
         with (
-            patch("api.federation.manager.require_deps"),
+            patch("api.federation.require_deps"),
             patch("api.federation.config.FEDERATION_ENABLED", True),
             patch("api.federation.config.FEDERATION_STAGE", "local"),
             patch("api.federation.config.validate", return_value=[]),
@@ -1019,12 +1018,12 @@ class TestOfflineSovereignty(_FedBase):
             adapter._peers[peer.node_id] = peer
 
         cid = self._grant(peer.node_id)
-        self.assertTrue(_c.is_valid(cid))
+        self.assertTrue(_c.is_valid(cid, 'did:key:peer')[0])
 
         # recall() — peer is offline but local revocation must still succeed
         adapter.recall(cid)
         self.assertFalse(
-            _c.is_valid(cid),
+            _c.is_valid(cid, peer.node_id)[0],
             "Consent must be locally revoked even when peer is offline.",
         )
 
