@@ -576,7 +576,7 @@ class TestCRDTMerge(unittest.TestCase):
         r1 = LWWRegister(value=0.8, timestamp=100.0)
         r2 = LWWRegister(value=0.6, timestamp=200.0)
         merged = r1.merge(r2)
-        self.assertAlmostEqual(merged.value, 0.6)
+        self.assertAlmostEqual(merged.get()[0], 0.6)
 
     def test_gset_merge_is_union(self):
         """G-Set merge must be set union."""
@@ -1018,7 +1018,7 @@ class TestOfflineSovereignty(_FedBase):
             adapter._peers[peer.node_id] = peer
 
         cid = self._grant(peer.node_id)
-        self.assertTrue(_c.is_valid(cid, 'did:key:peer')[0])
+        self.assertTrue(_c.is_valid(cid, peer.node_id)[0])
 
         # recall() — peer is offline but local revocation must still succeed
         adapter.recall(cid)
