@@ -1283,6 +1283,9 @@ def relate(package: Dict[str, Any]) -> Dict[str, Any]:
 def navigate(
     text: str,
     include_sensitive: bool = False,
+    subject_id: Optional[str] = None,
+    requester_id: Optional[str] = None,
+    purpose: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Traverse the graph from concepts in text. Return ranked context.
@@ -1290,6 +1293,14 @@ def navigate(
     Phase 1: Uses PPR when graph >= 200 nodes and fast-pagerank installed.
     Falls back to BFS (Stage 1 behavior) when graph is small or PPR
     is unavailable. BFS fallback is documented in audit trail.
+
+    Phase 4 additions (all optional — fully backwards compatible):
+      subject_id   — who is requesting the traversal
+      requester_id — who receives the results (defaults to subject_id)
+      purpose      — DPV purpose URI (defaults to dpv:ServiceProvision)
+
+    When ONTO_CONSENT_ENABLED=false (the default), all three parameters
+    are ignored and the function behaves identically to Phase 1/2/3.
 
     Return schema (unchanged from Stage 1):
         [{"concept", "effective_weight", "times_seen", "inputs_seen",
@@ -1299,6 +1310,35 @@ def navigate(
     """
     if not text or not text.strip():
         return []
+
+    # ── Phase 4: consent gate (no-op when ONTO_CONSENT_ENABLED=false) ────────
+    # Checked BEFORE any graph traversal. Absolute barriers (crisis, cls 4+)
+    # are enforced inside consent_gate.decide() regardless of configuration.
+    if subject_id is not None:
+        try:
+            from api.consent.enforcement import consent_gate
+            decision = consent_gate.decide(
+                subject_id=subject_id,
+                requester_id=requester_id or subject_id,
+                purpose=purpose or "dpv:ServiceProvision",
+                classification=0,
+                operation="navigate",
+            )
+            if not decision.allowed:
+                try:
+                    _memory.record(
+                        event_type="CONSENT_GATE_BLOCKED",
+                        notes=decision.reason,
+                        context={"subject_id": subject_id, "purpose": purpose},
+                    )
+                except Exception:
+                    pass
+                if decision.requires_checkpoint:
+                    return [{"consent_required": True, "consent_id": None}]
+                return []
+        except Exception:
+            pass  # Consent gate failure must never break graph navigation
+    # ─────────────────────────────────────────────────────────────────────────
 
     concepts = _extract_concepts(text)
     if not concepts:
