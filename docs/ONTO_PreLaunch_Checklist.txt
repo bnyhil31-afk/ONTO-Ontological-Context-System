@@ -1,56 +1,42 @@
 ONTO — PRE-LAUNCH CHECKLIST
-Version: v11
+Version: v12
 Date: 2026-04-02
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANGES FROM v10 TO v11
+CHANGES FROM v11 TO v12
 
-1. MARK COMPLETE — Items 6.01, 6.02, 6.03, 6.04, 6.05
-   Phase 1 Ontology Core v2 complete. CI green across Python 3.9–3.12.
+1. MARK COMPLETE — Section 8, Items 8.01–8.14
+   Phase 2 MCP Interface complete. CI green across Python 3.9–3.12.
 
-   6.01 — Typed directed edge schema. edge_types registry (16 standard
-          types). provenance table with trust scoring. All Phase 2–4
-          schema columns added now — one migration, ever. Two-pass FK-safe
-          seeding. Historical backfill for existing records.
+   8.01–8.09 — api/onto_server.py: FastMCP 3.x server, 8 tools/resources.
+               onto_ingest, onto_query, onto_surface, onto_checkpoint,
+               onto_relate, onto_schema, onto_status, onto_audit.
+   8.10 — mcp_session_map table bridges MCP sessions to ONTO tokens.
+          Schema present from Phase 1 with OAuth 2.1 columns ready.
+   8.11 — Bearer token auth. Same header as OAuth 2.1 — Stage 2
+          upgrade requires zero client changes.
+   8.12 — tests/test_mcp.py: 42 tests across 9 classes. Graceful skip
+          on Python 3.9 where FastMCP is not available.
+   8.13 — requirements-test.txt: fastmcp (Python>=3.10 marker),
+          fast-pagerank, scipy, psutil, pytest-asyncio.
+   8.14 — docs/MCP.md: full interface documentation for all 8 tools,
+          3 resources, auth model, security model, error reference.
 
-   6.02 — Personalized PageRank. fast-pagerank + scipy CSR. Hardware-
-          tiered loading (Pi: 5K nodes, laptop: 50K, enterprise: 500K+).
-          BFS fallback for graphs < 200 nodes. Alpha policy per pipeline
-          step. PPR cache invalidation on every relate() write.
+2. TEST COUNT — 313 → 355
+   42 new MCP tests (skip on Python 3.9; run on 3.10–3.12).
 
-   6.03 — PPMI incremental counters. Lazy weight computation. Context
-          smoothing α=0.75 (Levy et al. 2015). graph.prune() configurable
-          via ONTO_PPMI_PRUNE_THRESHOLD env var (default 0.5).
-
-   6.04 — Per-user decay profiles. decay_profiles table. Five seeded
-          profiles: standard (λ=0.95), slow/HIPAA (λ=0.99), fast
-          (λ=0.85), personal/GDPR (λ=0.97), financial/GLBA (λ=0.98).
-          session_config override table with all future columns present.
-
-   6.05 — Concept extraction evaluated. YAKE-inspired stdlib implementation
-          selected. Zero new dependencies. Pluggable ConceptExtractor
-          protocol. Phase 4 SpacyExtractor is a one-line swap.
-
-2. TEST COUNT — 227 → 313
-   60 new tests in tests/test_graph_phase1.py across 12 classes.
-
-3. NEW DOCUMENTS
-   docs/DESIGN-SPEC-001.md — Phase 1-4 design decisions locked before
-                              coding began. Governs all future phases.
-   docs/REGULATORY-MAP-002.md — Full regulatory compliance mapping.
+3. ADDED SECTION 9 — Phase 3: Federation
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CURRENT STATUS
 
-Tests: 313 passing across Python 3.9–3.12
+Tests: 355 passing across Python 3.9–3.12
+       (42 MCP tests skip on Python 3.9)
 CI: green ✅
 Phase 1 Ontology Core: complete ✅
-Ratification: all 3 conditions met ✅
-API: live at /docs ✅
-Encryption: integrated ✅
-Graph: live ✅
+Phase 2 MCP Interface: complete ✅
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -61,14 +47,14 @@ COMPLETED ITEMS
 [✅] Full loop tested end to end
 [✅] Safety flags tested — all three patterns pass
 [✅] Memory append-only triggers confirmed
-[✅] MIT license applied
+[✅] LGPL-2.1 license applied
 [✅] Repository published publicly
 [✅] Preservation document written
 [✅] Project record document created
 [✅] README complete with install instructions
 [✅] Gist published — 3 sealed hashes recorded
 
-[✅] 1.01 — Test suite — 313 tests, all passing
+[✅] 1.01 — Test suite — 355 tests, all passing
 [✅] 1.02 — Principle verification tested
 [✅] 1.03 — Safety flag detection tested
 [✅] 1.04 — Memory append-only enforcement confirmed
@@ -86,8 +72,6 @@ COMPLETED ITEMS
 [✅] 1.17 — crisis_detected propagation tested and confirmed
 
 [✅] 2.01 — Database encryption — integrated into main.py
-              Boot decrypts to session path. Shutdown re-encrypts.
-              Key cleared every session. Dev mode unaffected.
 [✅] 2.02 — Authentication — tests/test_auth.py, 11 tests, CI green
 [✅] 2.03 — Input sanitization against injection attacks
 [✅] 2.05 — Rate limiting — core/ratelimit.py
@@ -106,24 +90,28 @@ COMPLETED ITEMS
 
 [✅] 5.05 — Line endings protection
 [✅] 5.07 — Formal compliance mapping for data classification
-              COMPLIANCE-001 and REGULATORY-MAP-002 document the
-              6-level classification scheme.
 [✅] 5.08 — AFSP/SAMHSA/WHO safe messaging compliance review
-              Crisis response text in core/config.py.
-              Formal compliance architecture in COMPLIANCE-001.
 
-[✅] 6.01 — Directed edge schema — DESIGN-SPEC-001 §1. 16 standard types.
-              Provenance layer. All P2–P4 columns present. CI green.
-[✅] 6.02 — Personalized PageRank interface — DESIGN-SPEC-001 §2.
-              fast-pagerank + scipy CSR. BFS fallback. CI green.
-[✅] 6.03 — PPMI matrix approach — DESIGN-SPEC-001 §3. Incremental
-              counters. Lazy computation. Configurable prune threshold.
-              CI green.
-[✅] 6.04 — Per-user decay calibration — DESIGN-SPEC-001 §4. Five
-              seeded profiles. session_config table. CI green.
-[✅] 6.05 — Concept extraction evaluated — DESIGN-SPEC-001 §5. YAKE
-              selected. Pluggable protocol. Phase 4 SpacyExtractor ready.
-              CI green.
+[✅] 6.01 — Directed edge schema — DESIGN-SPEC-001 §1
+[✅] 6.02 — Personalized PageRank interface — DESIGN-SPEC-001 §2
+[✅] 6.03 — PPMI matrix approach — DESIGN-SPEC-001 §3
+[✅] 6.04 — Per-user decay calibration — DESIGN-SPEC-001 §4
+[✅] 6.05 — Concept extraction evaluated — DESIGN-SPEC-001 §5
+
+[✅] 8.01 — FastMCP 3.x server skeleton — api/onto_server.py
+[✅] 8.02 — onto_ingest tool
+[✅] 8.03 — onto_query tool
+[✅] 8.04 — onto_surface tool
+[✅] 8.05 — onto_checkpoint tool
+[✅] 8.06 — onto_relate tool
+[✅] 8.07 — onto_schema resource
+[✅] 8.08 — onto_status resource
+[✅] 8.09 — onto_audit resource
+[✅] 8.10 — mcp_session_map integration
+[✅] 8.11 — Bearer token auth
+[✅] 8.12 — Phase 2 test suite — 42 tests, graceful skip on 3.9
+[✅] 8.13 — requirements-test.txt updated
+[✅] 8.14 — docs/MCP.md
 
 [✅] NEW — CROSSOVER_CONTRACT_v1.0 sealed on GitHub
 [✅] NEW — CRE-SPEC-001 v0.6 sealed on GitHub
@@ -134,7 +122,10 @@ COMPLETED ITEMS
 [✅] NEW — tests/test_graph_phase1.py — 60 Phase 1 tests
 [✅] NEW — docs/DESIGN-SPEC-001.md — all phase decisions locked
 [✅] NEW — docs/REGULATORY-MAP-002.md — full compliance mapping
-[✅] NEW — tests/README.md updated — 313 tests documented
+[✅] NEW — api/onto_server.py — MCP server, 8 tools
+[✅] NEW — tests/test_mcp.py — 42 MCP tests
+[✅] NEW — docs/MCP.md — MCP interface documentation
+[✅] NEW — tests/README.md updated — 355 tests documented
 
 RULE: 1.09A — Code, tests, and documentation must always agree.
 
@@ -147,12 +138,7 @@ REMAINING ITEMS
 SECTION 1 — CORE
 
   [ ] 1.15 — Validate power-law decay constants against real usage data
-              DECAY_EXPONENT=0.5 is the ACT-R standard default.
-              Once the system has been used for 30+ days, sample
-              edge weight distributions and compare to expected
-              power-law curve. Adjust if user forgetting pattern
-              differs from ACT-R baseline.
-              Note: can only be done after real usage data accumulates.
+              Can only be done after 30+ days of real usage.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -160,31 +146,19 @@ SECTION 2 — SECURITY
 
   [ ] 2.04 — Third-party security audit
               GATE: required before any public launch or multi-user
-              deployment. Covers authentication, encryption, session
-              management, input handling, audit trail integrity.
-              See IP and audit path document for engagement guidance.
-
-  [ ] 2.08 — Penetration test
-              Required before any regulated-industry deployment.
-              Separate from the security audit.
-
-  [ ] 2.10 — Intrusion detection
-              Real-time anomaly monitoring. Required before multi-user
               deployment.
 
+  [ ] 2.08 — Penetration test (regulated-industry deployments)
+
+  [ ] 2.10 — Intrusion detection (multi-user deployments)
+
   [ ] 2.12 — GDPR wipe compliance mapping document
-              test_graph.py covers the technical behaviour.
-              A formal document mapping wipe() to GDPR Article 17
-              requirements still needed for legal review.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SECTION 3 — DEPLOYMENT READINESS
 
-  [ ] 3.01 — End-to-end setup test on real hardware
-              Phone, laptop, and Raspberry Pi.
-              A person unfamiliar with the codebase must be able to
-              deploy from the README without assistance.
+  [ ] 3.01 — End-to-end setup test on real hardware (phone, laptop, Pi)
 
   [ ] 3.02 — Windows setup instructions verified
 
@@ -194,11 +168,7 @@ SECTION 3 — DEPLOYMENT READINESS
 
 SECTION 4 — LEGAL
 
-  [ ] 4.01 — Legal counsel engaged
-              GATE: required before any public or commercial deployment.
-              10 items in CRE-SPEC-001 §33 marked [LEGAL REVIEW REQUIRED].
-              See REGULATORY-MAP-002 for full list.
-              Resources: EFF, Software Freedom Law Center.
+  [ ] 4.01 — Legal counsel engaged [GATE]
 
   [ ] 4.02 — Privacy policy reviewed by counsel
 
@@ -209,10 +179,6 @@ SECTION 4 — LEGAL
 SECTION 5 — COMPLIANCE
 
   [ ] 5.01 — GDPR right-to-erasure workflow as a user-facing feature
-              Cryptographic erasure architecture is documented.
-              Cryptographic erasure of the audit trail payload
-              (key destruction per docs/COMPLIANCE_001.txt) still
-              needs implementation as a user-facing feature.
 
   [ ] 5.02 — CCPA compliance review
 
@@ -223,7 +189,6 @@ SECTION 5 — COMPLIANCE
   [ ] 5.06 — Cookie and tracking policy (if web interface deployed)
 
   [ ] 5.09 — Mental health professional review of sensitive/crisis sets
-              Required before any multi-user or clinical deployment.
 
   [ ] 5.10 — Safe messaging compliance for crisis_detected pathway
 
@@ -233,13 +198,9 @@ SECTION 5 — COMPLIANCE
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SECTION 6 — PHASE 1: ONTOLOGY CORE (complete)
+SECTION 6 — PHASE 1: ONTOLOGY CORE (complete ✅)
 
-  [✅] 6.01 — Directed edge schema
-  [✅] 6.02 — Personalized PageRank interface
-  [✅] 6.03 — PPMI matrix approach
-  [✅] 6.04 — Per-user decay calibration
-  [✅] 6.05 — Concept extraction evaluated
+  [✅] 6.01–6.05 — All complete. See DESIGN-SPEC-001.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -251,22 +212,26 @@ SECTION 7 — DOCUMENTATION CORRECTIONS
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SECTION 8 — PHASE 2: MCP INTERFACE (in progress)
+SECTION 8 — PHASE 2: MCP INTERFACE (complete ✅)
 
-  [ ] 8.01 — FastMCP 3.x server skeleton — onto_server.py
-  [ ] 8.02 — onto_ingest tool — full 5-step pipeline over MCP
-  [ ] 8.03 — onto_query tool — PPR subgraph via MCP
-  [ ] 8.04 — onto_surface tool — epistemic state via MCP
-  [ ] 8.05 — onto_checkpoint tool — human sovereignty gate via MCP
-  [ ] 8.06 — onto_relate tool — typed edge assertion via MCP
-  [ ] 8.07 — onto_schema resource — edge_types vocabulary via MCP
-  [ ] 8.08 — onto_status resource — node health via MCP
-  [ ] 8.09 — onto_audit resource — paginated audit trail via MCP
-  [ ] 8.10 — mcp_session_map integration — bridge MCP ↔ ONTO sessions
-  [ ] 8.11 — Bearer token auth — existing session token in MCP header
-  [ ] 8.12 — Phase 2 test suite — tests/test_mcp.py
-  [ ] 8.13 — requirements-test.txt updated — fastmcp, scipy, psutil
-  [ ] 8.14 — docs/MCP.md — MCP interface documentation
+  [✅] 8.01–8.14 — All complete. See docs/MCP.md.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 9 — PHASE 3: FEDERATION
+
+  [ ] 9.01 — Node identity — did:key generation and storage
+  [ ] 9.02 — Capability manifest — publish what this node can do
+  [ ] 9.03 — mDNS discovery — find nodes on local network (python-zeroconf)
+  [ ] 9.04 — Node handshake — mutual capability negotiation
+  [ ] 9.05 — Consent ledger — W3C VC-forward consent record schema
+  [ ] 9.06 — CRDT merge — OR-Set for nodes, LWW-Register for edge weights
+  [ ] 9.07 — ActivityPub-inspired async messaging — inbox/outbox pattern
+  [ ] 9.08 — Conflict resolution — deterministic merge on graph divergence
+  [ ] 9.09 — mTLS inter-node — grpcio mutual TLS
+  [ ] 9.10 — Anti-concentration routing — topology monitoring
+  [ ] 9.11 — Phase 3 test suite — tests/test_federation.py
+  [ ] 9.12 — docs/FEDERATION.md — federation documentation
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
