@@ -1,57 +1,72 @@
 ONTO — PRE-LAUNCH CHECKLIST
-Version: v13
+Version: v14
 Date: 2026-04-03
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CHANGES FROM v12 TO v13
+CHANGES FROM v13 TO v14
 
-1. MARK COMPLETE — Section 9, Items 9.01–9.12
-   Phase 3 Federation complete. CI green across Python 3.9–3.12.
+1. MARK COMPLETE — Section 10, Items 10.01–10.12
+   Phase 4 Multi-User Consent Ledger complete. CI green across Python 3.9–3.12.
 
-   9.01 — node_identity.py: did:key generation (Ed25519), separate key
-          file, JCS signing, verify returns bool never raises.
-   9.02 — capability.py: VoID descriptor + ONTO capabilities, JCS-signed
-          manifest, crisis_barrier always true (non-configurable).
-   9.03 — intranet.py: IntranetAdapter adds mDNS via python-zeroconf,
-          _onto._tcp.local. service type, graceful fallback if not installed.
-   9.04 — local.py + intranet.py: handshake exchanges manifests, verifies
-          signature, pins certificate (TOFU), writes audit event both nodes.
-   9.05 — consent.py: full consent ledger — grant, revoke, reconfirm,
-          standing consent 90-day re-confirmation, W3C VC fields present.
-   9.06 — crdt.py: VectorClock, ORSet, LWWRegister, GSet, PNCounter,
-          vclock_compare, merge_node_sets, merge_edge_weights, ConflictInfo.
-   9.07 — audit.py: federation_outbox + federation_inbox tables, sequence
-          numbers per recipient, ActivityPub-inspired inbox/outbox pattern.
-   9.08 — crdt.py + local.py: conflict detection via vector clocks; concurrent
-          writes produce ConflictInfo list for onto_checkpoint escalation.
-   9.09 — Transport: Phase 3 plain HTTP (Phase 4 upgrade: gRPC + mTLS).
-          Peer endpoints documented. TOFU pinning via peer_store.py.
-          NOTE: full mTLS deferred to Phase 4 per transport upgrade plan.
-   9.10 — config.py: ONTO_FED_MAX_GRAPH_SIMILARITY (default 1.0=disabled),
-          anti-concentration metric documented; soft warning mechanism built.
-   9.11 — tests/test_federation.py: 69 tests, 16 classes. Safety-critical
-          TestAbsoluteBarriers and TestFederationSafetyFilter block deploy.
-   9.12 — docs/FEDERATION.md + docs/FEDERATION-SPEC-001.md complete.
+   10.01 — api/consent/__init__.py: package init, is_enabled(), spec version.
+   10.02 — api/consent/config.py: all env vars, validation, summary.
+   10.03 — api/consent/profiles.py: team, healthcare, financial profiles.
+            RegulatoryProfile base class, validate_record(), is_retention_locked().
+   10.04 — api/consent/adapter.py: ConsentAdapter protocol, ConsentDecision,
+            ConsentRecord (ISO 27560 fields + W3C VC 2.0 fields), ConsentRequest.
+   10.05 — api/consent/schema.py: SQL DDL (consent_ledger + consent_requests),
+            DPV purpose vocabulary, legal basis vocabulary, JSON-LD serialization,
+            W3C VC 2.0 envelope structure.
+   10.06 — api/consent/ledger.py: ConsentLedger singleton — grant (profile
+            validation, last_reconfirmed on standing consent, status list index),
+            check (self-access, GLBA opt-out, active lookup, reconfirmation,
+            operation check, classification ceiling), revoke (cascade to children),
+            history, pending.
+   10.07 — api/consent/enforcement.py: ConsentGate singleton (PDP) — absolute
+            barriers (crisis, classification 4+), consent disabled no-op,
+            audit-only mode, gate enforce flag, ledger delegation, audit events.
+   10.08 — api/consent/vc_service.py: VCService protocol, NullVCService (Phase 4),
+            HttpVCService (Phase 5 sidecar), get_vc_service() factory.
+   10.09 — api/consent/status_list.py: Bitstring Status List index allocation,
+            2-bit status encoding, Phase 5 metadata.
+   10.10 — modules/graph.py: consent gate at navigate() — 3 optional parameters
+            (subject_id, requester_id, purpose), feature-flagged, backwards
+            compatible, absolute barriers enforced before any traversal.
+   10.11 — tests/test_consent.py: 57 tests across 10 classes. Safety-critical:
+            TestConsentAbsoluteBarriers (6), TestConsentGate (9).
+   10.12 — docs/CONSENT-LEDGER.md: operator guide — setup, profiles, lifecycle,
+            rollout mode, DPV vocabulary, legal basis vocabulary, VC 2.0 roadmap.
 
-2. TEST COUNT — 355 → 424
-   69 new federation tests across 16 classes.
+2. TEST COUNT — 424 → 481
+   57 new consent ledger tests across 10 classes.
+   Skip table updated: Python 3.9 runs 441, Python 3.10+ runs 483.
 
-3. FEDERATION TRANSPORT NOTE
-   Phase 3 uses plain HTTP (JSON over TCP) as transport.
-   Full gRPC + mTLS is Phase 4 — grpcio is installed but not yet activated.
-   The FederationAdapter protocol is the swap point; no other files change.
+3. BUG FIX — ledger.py: standing consent last_reconfirmed
+   Freshly granted standing consents set last_reconfirmed=granted_at.
+   Previously, last_reconfirmed=None caused needs_reconfirmation() to
+   fire immediately on every new standing consent grant.
+
+4. MARK COMPLETE — 5.12 (echo chamber monitoring design document)
+   docs/ECHO_CHAMBER_MONITOR.md: 4-layer design, entropy formula,
+   rumination detection (Stage 2, requires mental health review first),
+   federation concentration (Phase 3, already implemented).
+
+5. ADDED — docs/LEGAL_BRIEF.md
+   Legal counsel engagement brief — Groups A–E, 5 review phases,
+   suggested reading order for counsel.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CURRENT STATUS
 
-Tests: 424 passing across Python 3.9–3.12
+Tests: 481 passing across Python 3.9–3.12
        (42 MCP tests skip on Python 3.9)
 CI: green ✅
 Phase 1 Ontology Core: complete ✅
 Phase 2 MCP Interface: complete ✅
 Phase 3 Federation: complete ✅
+Phase 4 Consent Ledger: complete ✅
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -69,7 +84,7 @@ COMPLETED ITEMS
 [✅] README complete with install instructions
 [✅] Gist published — 3 sealed hashes recorded
 
-[✅] 1.01 — Test suite — 424 tests, all passing
+[✅] 1.01 — Test suite — 481 tests, all passing
 [✅] 1.02 — Principle verification tested
 [✅] 1.03 — Safety flag detection tested
 [✅] 1.04 — Memory append-only enforcement confirmed
@@ -95,6 +110,10 @@ COMPLETED ITEMS
 [✅] 2.09 — Session management — core/session.py, 17 tests
 [✅] 2.11 — Environment variable config — core/config.py
 
+[✅] 3.01 — Hardware validation — laptop complete (Windows: clean boot,
+            all 3 test inputs verified, crisis detection working)
+[✅] 3.02 — Windows setup instructions verified — docs/Setup_Windows.md updated,
+            requirements.txt added, UTF-8 fix in main.py
 [✅] 3.04 — API documentation — FastAPI /docs live
 [✅] 3.05 — CONTRIBUTING.md
 [✅] 3.06 — FAQ document — docs/FAQ.md
@@ -103,9 +122,12 @@ COMPLETED ITEMS
 [✅] 3.15 — docs/API.md — graph.py public interface documented
 [✅] 3.16 — CHANGELOG.md — graph.py release entry added
 
+[✅] 5.03 — Data retention policy — docs/DATA_RETENTION.md v1.1
+[✅] 5.04 — Consent management framework — docs/CONSENT_MANAGEMENT.md v1.1
 [✅] 5.05 — Line endings protection
 [✅] 5.07 — Formal compliance mapping for data classification
 [✅] 5.08 — AFSP/SAMHSA/WHO safe messaging compliance review
+[✅] 5.12 — Graph entropy / echo chamber monitoring — docs/ECHO_CHAMBER_MONITOR.md
 
 [✅] 6.01 — Directed edge schema — DESIGN-SPEC-001 §1
 [✅] 6.02 — Personalized PageRank interface — DESIGN-SPEC-001 §2
@@ -113,46 +135,35 @@ COMPLETED ITEMS
 [✅] 6.04 — Per-user decay calibration — DESIGN-SPEC-001 §4
 [✅] 6.05 — Concept extraction evaluated — DESIGN-SPEC-001 §5
 
-[✅] 8.01 — FastMCP 3.x server skeleton — api/onto_server.py
-[✅] 8.02 — onto_ingest tool
-[✅] 8.03 — onto_query tool
-[✅] 8.04 — onto_surface tool
-[✅] 8.05 — onto_checkpoint tool
-[✅] 8.06 — onto_relate tool
-[✅] 8.07 — onto_schema resource
-[✅] 8.08 — onto_status resource
-[✅] 8.09 — onto_audit resource
-[✅] 8.10 — mcp_session_map integration
-[✅] 8.11 — Bearer token auth
-[✅] 8.12 — Phase 2 test suite — 42 tests, graceful skip on 3.9
-[✅] 8.13 — requirements-test.txt updated
-[✅] 8.14 — docs/MCP.md
+[✅] 8.01–8.14 — Phase 2 MCP Interface — all complete. See docs/MCP.md.
 
-[✅] 9.01 — Node identity — did:key, Ed25519, key file not SQLite
-[✅] 9.02 — Capability manifest — VoID descriptor, JCS-signed
-[✅] 9.03 — mDNS discovery — IntranetAdapter, python-zeroconf,
-              graceful fallback when not installed
-[✅] 9.04 — Node handshake — manifest exchange, TOFU cert pinning
-[✅] 9.05 — Consent ledger — grant, revoke, reconfirm, W3C VC schema
-[✅] 9.06 — CRDT merge — OR-Set, LWW-Register, GSet, VectorClock
-[✅] 9.07 — Async messaging — federation_outbox + federation_inbox,
-              sequence numbers, rate limiting, inbox/outbox pattern
-[✅] 9.08 — Conflict resolution — vector clock compare, ConflictInfo,
-              onto_checkpoint escalation for concurrent writes
-[✅] 9.09 — Transport — Phase 3 HTTP (Phase 4: gRPC + mTLS)
-              TOFU pinning via peer_store.py; grpcio in deps for Phase 4
-[✅] 9.10 — Anti-concentration — ONTO_FED_MAX_GRAPH_SIMILARITY config,
-              graph similarity metric, soft warning in onto_status
-[✅] 9.11 — Phase 3 test suite — tests/test_federation.py, 69 tests,
-              16 classes, TestAbsoluteBarriers safety-critical
-[✅] 9.12 — Federation documentation — docs/FEDERATION.md +
-              docs/FEDERATION-SPEC-001.md (v1.1)
+[✅] 9.01–9.12 — Phase 3 Federation — all complete. See docs/FEDERATION.md.
+                 NOTE: Transport is plain HTTP. Phase 4 upgrade to gRPC + mTLS.
 
-[✅] NEW — api/federation/ package — 13 implementation files
-[✅] NEW — docs/FEDERATION-SPEC-001.md — design spec v1.1
-[✅] NEW — docs/FEDERATION.md — operator documentation
-[✅] NEW — tests/test_federation.py — 69 tests
-[✅] NEW — tests/README.md updated — 424 tests documented
+[✅] 10.01 — Consent package init — api/consent/__init__.py
+[✅] 10.02 — Consent config — api/consent/config.py
+[✅] 10.03 — Regulatory profiles — api/consent/profiles.py (team/healthcare/financial)
+[✅] 10.04 — ConsentAdapter protocol — api/consent/adapter.py
+[✅] 10.05 — ISO 27560 schema + DPV vocabulary — api/consent/schema.py
+[✅] 10.06 — ConsentLedger implementation — api/consent/ledger.py
+[✅] 10.07 — ConsentGate PDP — api/consent/enforcement.py
+[✅] 10.08 — VCService protocol + NullVCService — api/consent/vc_service.py
+[✅] 10.09 — Bitstring Status List allocation — api/consent/status_list.py
+[✅] 10.10 — graph.navigate() consent gate — modules/graph.py (feature-flagged)
+[✅] 10.11 — Phase 4 test suite — tests/test_consent.py, 57 tests,
+              TestConsentAbsoluteBarriers safety-critical
+[✅] 10.12 — Consent ledger documentation — docs/CONSENT-LEDGER.md +
+              docs/CONSENT-LEDGER-SPEC-001.md
+
+[✅] NEW — api/consent/ package — 9 implementation files
+[✅] NEW — docs/CONSENT-LEDGER-SPEC-001.md — design spec
+[✅] NEW — docs/CONSENT-LEDGER.md — operator documentation
+[✅] NEW — docs/ECHO_CHAMBER_MONITOR.md — checklist 5.12
+[✅] NEW — docs/LEGAL_BRIEF.md — counsel engagement brief (4.01 prep)
+[✅] NEW — docs/SECURITY_AUDIT_BRIEF.md — auditor brief (2.04 prep)
+[✅] NEW — requirements.txt — runtime dependencies documented
+[✅] NEW — tests/test_consent.py — 57 tests
+[✅] NEW — tests/README.md updated — 481 tests documented
 
 RULE: 1.09A — Code, tests, and documentation must always agree.
 
@@ -172,6 +183,7 @@ SECTION 1 — CORE
 SECTION 2 — SECURITY
 
   [ ] 2.04 — Third-party security audit [GATE: required before public launch]
+              Brief ready at docs/SECURITY_AUDIT_BRIEF.md
 
   [ ] 2.08 — Penetration test (regulated-industry deployments)
 
@@ -183,9 +195,8 @@ SECTION 2 — SECURITY
 
 SECTION 3 — DEPLOYMENT READINESS
 
-  [ ] 3.01 — End-to-end setup test on real hardware (phone, laptop, Pi)
-
-  [ ] 3.02 — Windows setup instructions verified
+  [ ] 3.01 — Hardware validation — Raspberry Pi pending
+              Laptop (Windows): complete ✅
 
   [ ] 3.03 — Raspberry Pi setup instructions verified
 
@@ -194,6 +205,7 @@ SECTION 3 — DEPLOYMENT READINESS
 SECTION 4 — LEGAL
 
   [ ] 4.01 — Legal counsel engaged [GATE: required before public launch]
+              Brief ready at docs/LEGAL_BRIEF.md
 
   [ ] 4.02 — Privacy policy reviewed by counsel
 
@@ -207,19 +219,14 @@ SECTION 5 — COMPLIANCE
 
   [ ] 5.02 — CCPA compliance review
 
-  [ ] 5.03 — Data retention policy
-
-  [ ] 5.04 — Consent management framework
-
   [ ] 5.06 — Cookie and tracking policy (if web interface deployed)
 
   [ ] 5.09 — Mental health professional review of sensitive/crisis sets
+              REQUIRED before rumination detection (ECHO_CHAMBER_MONITOR Layer 3)
 
   [ ] 5.10 — Safe messaging compliance for crisis_detected pathway
 
   [ ] 5.11 — Graph bias audit before any multi-user deployment
-
-  [ ] 5.12 — Graph entropy / echo chamber monitoring (design document)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -234,6 +241,7 @@ SECTION 7 — DOCUMENTATION CORRECTIONS
   [ ] 7.01 — Update "autopoietic" → "autopoietically-inspired" /
               "cognitive scaffold" in README.md, CRE-SPEC-001-v06.md,
               CROSSOVER_CONTRACT_v1.0.md, ONTO_Preservation_Document.txt
+              Guide ready at docs/terminology_corrections.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -250,6 +258,14 @@ SECTION 9 — PHASE 3: FEDERATION (complete ✅)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+SECTION 10 — PHASE 4: CONSENT LEDGER (complete ✅)
+
+  [✅] 10.01–10.12 — All complete. See docs/CONSENT-LEDGER.md.
+  NOTE: W3C VC 2.0 issuance deferred to Phase 5 (VCService sidecar).
+        SD-JWT VC for EUDIW compliance deferred to Phase 5.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 GITHUB SECURITY ACTIONS
 
   [ ] Enable signed commits (GPG)
@@ -259,10 +275,10 @@ GITHUB SECURITY ACTIONS
 
 STAGE 1 EXIT CRITERIA STATUS
 
-  [✅] All critical code items complete — done
-  [ ] Security audit passed — not yet engaged (item 2.04)
-  [ ] Legal foundation in place — not yet engaged (item 4.01)
-  [✅] A stranger can deploy from README — FAQ + /docs in place
+  [✅] All critical code items complete — done (4 phases)
+  [ ] Security audit passed — brief ready, not yet engaged (item 2.04)
+  [ ] Legal foundation in place — brief ready, not yet engaged (item 4.01)
+  [✅] A stranger can deploy from README — verified on Windows laptop
   [ ] All 28 threats with Open+Critical status mitigated or accepted
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
