@@ -75,6 +75,13 @@ class ConsentLedger:
                 + "; ".join(errors)
             )
 
+        # Standing consents: set last_reconfirmed = granted_at.
+        # Granting a standing consent is itself a confirmation.
+        # Without this, needs_reconfirmation() fires immediately on
+        # every freshly granted standing consent (last_reconfirmed=None).
+        if record.valid_until is None and record.last_reconfirmed is None:
+            record.last_reconfirmed = record.granted_at
+
         # Allocate status list index (Phase 5 will use this)
         from api.consent.status_list import allocate_index
         record.vc_status_list_idx = allocate_index()
