@@ -92,29 +92,42 @@ git clone https://github.com/bnyhil31-afk/ONTO-Ontological-Context-System.git
 cd ONTO-Ontological-Context-System
 ```
 
-### Step 4 — Set up
+### Step 4 — Run immediately (no install required)
 
-ONTO's `setup.sh` is a bash script and will not run natively in PowerShell.
-Run these equivalent steps instead:
-
-```powershell
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-If there is no `requirements.txt`, skip the pip install — ONTO has no
-required dependencies beyond Python's standard library.
-
-Create the data directory:
-
-```powershell
-mkdir data -ErrorAction SilentlyContinue
-```
-
-### Step 5 — Run
+ONTO's core runs on Python's standard library. No packages are required
+to start the system. You can run it right now:
 
 ```powershell
 python main.py
+```
+
+You should see the boot sequence and a `You:` prompt. Type anything to begin.
+
+### Step 5 — Install optional packages (recommended)
+
+For full functionality (encryption, authentication, graph analytics,
+MCP interface), install the optional packages:
+
+```powershell
+pip install -r requirements.txt
+```
+
+What each group adds:
+
+| Package | Adds |
+|---------|------|
+| `cryptography` + `argon2-cffi` | Database encryption and passphrase auth |
+| `fastapi` + `uvicorn` | HTTP API server (`api/main.py`) |
+| `fast-pagerank` + `scipy` | Personalized PageRank on large graphs |
+| `fastmcp` | MCP interface for AI systems (Python 3.10+ only) |
+| `zeroconf` + `grpcio` | Federation between ONTO nodes |
+
+None of these are required for the core loop. Install what you need.
+
+### Step 6 — Create the data directory (if it wasn't created automatically)
+
+```powershell
+mkdir data -ErrorAction SilentlyContinue
 ```
 
 ---
@@ -165,7 +178,13 @@ Try `python3` instead. If neither works, Python was not added to PATH.
 Reinstall Python and check the "Add to PATH" box.
 
 **`pip` not found**  
-Run `python -m pip` instead of `pip`.
+Run `python -m pip install -r requirements.txt` instead.
+
+**Characters display as boxes (▯) instead of checkmarks**  
+PowerShell on older Windows versions may not render unicode correctly.
+This is cosmetic only — the system is working. To fix it, switch to
+Windows Terminal (available free from the Microsoft Store), which
+supports unicode by default.
 
 **Permission errors**  
 Run PowerShell as Administrator.
