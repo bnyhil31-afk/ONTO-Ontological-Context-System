@@ -1,7 +1,7 @@
 # ONTO Test Suite
 
-Tests: **313** passing across Python 3.9–3.12
-CI: green ✅
+Tests: **315** always passing + **42** MCP tests (Python 3.10+ only)
+CI: green ✅ across Python 3.9–3.12
 
 Rule 1.09A: Any change to the test suite requires updating three things
 together: the test file header (expected count), this README (expected
@@ -16,9 +16,11 @@ pip install -r requirements-test.txt
 pytest tests/ -v
 ```
 
-To run only Phase 1 tests:
+Run only a specific suite:
+
 ```bash
-pytest tests/test_graph_phase1.py -v
+pytest tests/test_graph_phase1.py -v   # Phase 1 ontology core
+pytest tests/test_mcp.py -v            # Phase 2 MCP interface
 ```
 
 ---
@@ -81,6 +83,48 @@ TestMigration              |   5   | All Phase 1 tables present, Stage 1 preserv
 TestForwardCompat          |   7   | All P2/P3/P4 columns present and NULL on
                            |       | graph_nodes, graph_edges, mcp_session_map
 
+### tests/test_mcp.py — Phase 2 MCP Interface (42 tests)
+
+Requires Python 3.10+ and `fastmcp>=2.0.0`. All 42 tests skip gracefully
+on Python 3.9 — the rest of the suite is unaffected. See skip behaviour
+section below.
+
+Tools are tested by calling the decorated Python functions directly,
+without a live MCP transport. Session auth is mocked so tests run
+without a running ONTO server or live credentials.
+
+Class                      | Tests | What it covers
+---------------------------|-------|--------------------------------------------
+TestResponseEnvelope       |   5   | Every envelope shape: ok, error,
+                           |       | pending_checkpoint, crisis. schema_version
+                           |       | always present and equal to "1.0"
+TestSessionResolution      |   5   | Bearer token parsing, valid session resolves,
+                           |       | missing / non-Bearer / invalid token
+                           |       | returns None, _require_session safe to call
+TestOntoIngest             |   6   | Nodes and edges created, concepts in result,
+                           |       | provenance_id returned, crisis input never
+                           |       | writes to graph, rejected without auth
+TestOntoQuery              |   5   | Known concepts return ok, unknown concepts
+                           |       | return ok with warning (not an error),
+                           |       | alpha clamped to [0.70, 0.95], subgraph
+                           |       | keys present, rejected without auth
+TestOntoSurface            |   4   | Confidence returned, classification present,
+                           |       | crisis input returns crisis status,
+                           |       | rejected without auth
+TestOntoCheckpoint         |   6   | No decision → pending_checkpoint with
+                           |       | automation bias warning (EU AI Act Art 14),
+                           |       | proceed authorizes, veto halts action,
+                           |       | invalid decision → error with valid options,
+                           |       | all four valid decisions accepted
+TestOntoRelate             |   5   | Nodes created for both concepts, empty source
+                           |       | or target → error, crisis content → crisis
+                           |       | status (never stored), rejected without auth
+TestOntoSchema             |   3   | Exactly 16 edge types, all 7 categories
+                           |       | present, schema_version = "1.0"
+TestOntoStatus             |   3   | status=healthy, graph metrics present
+                           |       | (nodes/edges/inputs), PPR info present
+                           |       | with hardware_tier
+
 ### tests/test_session.py — Session management (17 tests)
 
 Session creation, validation, rotation, termination, audit trail.
@@ -88,6 +132,29 @@ Session creation, validation, rotation, termination, audit trail.
 ### tests/test_auth.py — Authentication (11 tests)
 
 Passphrase setup, Argon2id verification, lockout, dev mode.
+
+---
+
+## MCP test skip behaviour
+
+On Python 3.9, FastMCP is not installed (a version marker in
+`requirements-test.txt` restricts it to Python >=3.10). Every class in
+`test_mcp.py` is decorated with:
+
+```python
+@unittest.skipUnless(_FASTMCP_INSTALLED, "fastmcp not installed ...")
+```
+
+Result by Python version:
+
+| Python | Tests run | Tests skipped | Total reported |
+|--------|-----------|---------------|----------------|
+| 3.9    | 315       | 42            | 357 (42 skip)  |
+| 3.10   | 357       | 0             | 357            |
+| 3.11   | 357       | 0             | 357            |
+| 3.12   | 357       | 0             | 357            |
+
+Skipped tests are not failures. CI is green on all versions.
 
 ---
 
