@@ -128,12 +128,15 @@ def initialize() -> bool:
 
         # Schema migration — add new columns if upgrading from older schema
         # This is safe to run on any existing database
-        new_columns = [
-            ("chain_hash", "TEXT"),
-            ("signature_algorithm", "TEXT DEFAULT 'Ed25519'"),
-            ("classification", "INTEGER DEFAULT 0"),
-        ]
-        for col_name, col_def in new_columns:
+        # Pre-approved column additions for schema migration.
+        # Using a fixed dict (not user input) prevents SQL injection.
+        # SQLite does not support parameterized DDL, so we whitelist explicitly.
+        _MIGRATION_COLUMNS = {
+            "chain_hash": "TEXT",
+            "signature_algorithm": "TEXT DEFAULT 'Ed25519'",
+            "classification": "INTEGER DEFAULT 0",
+        }
+        for col_name, col_def in _MIGRATION_COLUMNS.items():
             try:
                 conn.execute(
                     f"ALTER TABLE events ADD COLUMN {col_name} {col_def}"
@@ -619,19 +622,25 @@ def verify_chain() -> Dict[str, Any]:
     gaps = []
     prev_hash = None
 
-    for r in records:
-        if r["chain_hash"] is None and r["id"] == 1:
-            # Genesis record — no previous hash
+    for idx, r in enumerate(records):
+        if idx == 0:
+            # Genesis record (first by id, regardless of its actual id value).
+            # It has no predecessor, so chain_hash is expected to be None.
             prev_hash = _hash_record_content(r)
             continue
 
-        expected = prev_hash
         stored = r.get("chain_hash")
 
-        if stored != expected:
+        # Pre-chain records: written before Merkle chaining was introduced.
+        # Both stored and expected are None — treat as intact, not a gap.
+        if stored is None and prev_hash is None:
+            prev_hash = _hash_record_content(r)
+            continue
+
+        if stored != prev_hash:
             gaps.append({
                 "record_id": r["id"],
-                "expected": expected,
+                "expected": prev_hash,
                 "stored": stored
             })
 

@@ -124,10 +124,26 @@ def boot() -> None:
                     # DB exists but is not yet encrypted — first session
                     # after enabling auth on an existing installation.
                     shutil.copy2(_original_db_path, _session_db_path)
-            except Exception:
-                # Decryption failed (corrupted file, wrong key, etc).
-                # Start with a fresh session DB rather than crashing.
-                pass
+            except Exception as _exc:
+                # Decryption failed — wrong key, corrupted file, etc.
+                # Do NOT continue: if we proceed with an empty DB and
+                # shut down cleanly, the empty DB would overwrite the
+                # encrypted original, destroying all historical data.
+                encryption.clear_key()
+                print("\n  ═" * 35)
+                print("  CANNOT START SESSION — DECRYPTION FAILED")
+                print("  ═" * 35)
+                print(f"\n  Details: {_exc}")
+                print(
+                    "\n  The database could not be decrypted. "
+                    "Possible causes:\n"
+                    "    - Wrong passphrase\n"
+                    "    - Corrupted database file\n"
+                    "    - Salt file mismatch\n"
+                    "\n  The encrypted file has NOT been modified."
+                    "\n  Re-run and enter the correct passphrase.\n"
+                )
+                sys.exit(1)
 
         memory.DB_PATH = _session_db_path
         _encryption_active = True

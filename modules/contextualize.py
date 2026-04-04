@@ -21,12 +21,9 @@ Rule 1.09A: Code, tests, and documentation must always agree.
 """
 
 import os
-import sys
 from typing import Any, Dict, List
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from modules import memory  # noqa: E402
+from modules import memory
 
 try:
     from modules import graph as _graph_module

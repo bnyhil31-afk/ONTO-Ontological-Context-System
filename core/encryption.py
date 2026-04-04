@@ -300,7 +300,9 @@ class EncryptionLayer:
 
         # First deployment — generate and store a new salt
         salt = secrets.token_bytes(ARGON2_SALT_SIZE)
-        os.makedirs(os.path.dirname(salt_path), exist_ok=True)
+        salt_dir = os.path.dirname(salt_path)
+        if salt_dir:
+            os.makedirs(salt_dir, exist_ok=True)
         with open(salt_path, "wb") as f:
             f.write(salt)
 
