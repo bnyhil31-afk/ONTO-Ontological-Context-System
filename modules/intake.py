@@ -441,7 +441,7 @@ def _classify_input_type(text: str) -> str:
     stripped = text.strip()
 
     # Pure numeric input (including formatted numbers/phone/currency)
-    if re.match(r"^[\d\s\.,\-\+\(\)\/\%\$\£\€\#\@]+$", stripped):
+    if re.match(r"^[\d\s.,+\(\)\/\%$\£\€@#-]+$", stripped):
         return "number"
 
     lower = stripped.lower()

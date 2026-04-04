@@ -202,7 +202,9 @@ class LocalAuthManager:
         }
 
         auth_path = self._get_auth_path()
-        os.makedirs(os.path.dirname(auth_path), exist_ok=True)
+        auth_dir = os.path.dirname(auth_path)
+        if auth_dir:
+            os.makedirs(auth_dir, exist_ok=True)
         with open(auth_path, "w") as f:
             json.dump(state, f, indent=2)
 
@@ -302,9 +304,12 @@ class LocalAuthManager:
         auth_salt_hex = state.get("auth_salt", "")
 
         if not auth_salt_hex:
-            # Legacy: no salt in state (pre-U2 auth.json)
-            # Rehash with empty salt for backward compatibility
-            auth_salt = b""
+            # Legacy: no salt in state (pre-U2 auth.json).
+            # The original v1 implementation hashed with an empty salt.
+            # We use a fixed zero-byte sentinel so verification is
+            # deterministic across calls — not a random salt per attempt.
+            # Users on legacy auth.json should re-run setup to migrate.
+            auth_salt = b"\x00" * AUTH_SALT_SIZE
         else:
             auth_salt = bytes.fromhex(auth_salt_hex)
 
@@ -397,9 +402,13 @@ class LocalAuthManager:
         """
         from argon2.low_level import hash_secret_raw, Type
 
+        # Never substitute a random salt — the caller is always responsible
+        # for providing the correct salt. A random fallback would produce
+        # an irreproducible hash, making every authentication attempt fail.
+        # Argon2 requires salt length >= 8 bytes; callers must ensure this.
         key = hash_secret_raw(
             secret=passphrase.encode("utf-8"),
-            salt=salt if salt else secrets.token_bytes(AUTH_SALT_SIZE),
+            salt=salt,
             time_cost=AUTH_ARGON2_TIME_COST,
             memory_cost=AUTH_ARGON2_MEMORY_KB,
             parallelism=AUTH_ARGON2_PARALLELISM,

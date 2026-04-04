@@ -24,6 +24,8 @@ It writes that down forever.
 This is Principles III (Freedom) and VIII (Integrity) — in code.
 """
 
+from typing import List, Optional
+
 from modules import memory
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,7 +189,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
 
 def _ask_human(
     prompt: str,
-    options: list = None
+    options: Optional[List[str]] = None
 ) -> str:
     """
     Presents a prompt to the human and records their response.

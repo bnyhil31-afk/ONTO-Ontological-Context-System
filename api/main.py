@@ -55,7 +55,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
-from unittest.mock import patch
 
 # ── Project root on sys.path ─────────────────────────────────────────────────
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -794,14 +793,19 @@ async def process(
         """
         return human_decision_value
 
+    # Temporarily replace _ask_human so the checkpoint doesn't block
+    # on terminal input() during API processing. Restored in finally.
+    _orig_ask_human = checkpoint._ask_human
+    checkpoint._ask_human = _api_decision
     try:
-        with patch("modules.checkpoint._ask_human", _api_decision):
-            checkpoint_result = checkpoint.run(surfaced, enriched)
+        checkpoint_result = checkpoint.run(surfaced, enriched)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Checkpoint failed: {type(exc).__name__}: {exc}",
         )
+    finally:
+        checkpoint._ask_human = _orig_ask_human
 
     if checkpoint_result.get("record_id"):
         record_ids.append(checkpoint_result["record_id"])

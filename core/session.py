@@ -86,9 +86,10 @@ TOKEN_BYTES = 32  # 256 bits of entropy
 DEFAULT_TTL_SECONDS = int(os.environ.get("ONTO_SESSION_TTL_SECONDS", "3600"))
 MAX_LIFETIME_SECONDS = int(os.environ.get("ONTO_SESSION_MAX_LIFETIME_SECONDS", "28800"))
 
-ENFORCE_CONNECTION_BINDING = (
-    os.environ.get("ONTO_SESSION_BINDING", "true").lower() == "true"
-)
+# Read lazily inside validate() so tests can set this env var after import.
+# Do not read at module level — module-level reads are frozen at import time.
+def _enforce_connection_binding() -> bool:
+    return os.environ.get("ONTO_SESSION_BINDING", "true").lower() == "true"
 
 MAX_CONCURRENT_SESSIONS = int(os.environ.get("ONTO_MAX_SESSIONS", "1"))
 
@@ -459,7 +460,7 @@ class SessionManager:
                 )
                 return None
 
-            if ENFORCE_CONNECTION_BINDING and session.connection_fingerprint_hash is not None:
+            if _enforce_connection_binding() and session.connection_fingerprint_hash is not None:
                 if self._hash_fingerprint(connection_fingerprint) != session.connection_fingerprint_hash:
                     self._dispatch(
                         "SESSION_BINDING_VIOLATION",

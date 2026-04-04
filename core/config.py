@@ -22,6 +22,9 @@ Usage:
 import os
 from typing import Optional
 
+# Project root — same anchor used by all modules that resolve file paths.
+_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 class ONTOConfig:
     """
@@ -84,11 +87,15 @@ class ONTOConfig:
     @property
     def DB_PATH(self) -> str:
         """
-        Path to the SQLite memory database.
-        Default: data/memory.db (relative to project root).
-        Set ONTO_DB_PATH to override.
+        Absolute path to the SQLite memory database.
+        Default: <project_root>/data/memory.db.
+        Set ONTO_DB_PATH to override (relative paths are resolved from
+        the project root, not the working directory).
         """
-        return os.environ.get("ONTO_DB_PATH", "data/memory.db")
+        raw = os.environ.get("ONTO_DB_PATH", "")
+        if raw:
+            return raw if os.path.isabs(raw) else os.path.join(_ROOT, raw)
+        return os.path.join(_ROOT, "data", "memory.db")
 
     # ─────────────────────────────────────────────────────────────────────────
     # AUTHENTICATION (item 2.02)
