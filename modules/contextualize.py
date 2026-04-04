@@ -88,7 +88,8 @@ def build(package: Dict[str, Any]) -> Dict[str, Any]:
 
     No synthetic data is introduced. Every edge traces to this input.
     """
-    text = package.get("clean") or package.get("raw") or ""
+    # A-9: Always use "clean" (sanitized). Never fall back to "raw".
+    text = package.get("clean", "")
 
     # Step 1: RELATE — add this input to the graph
     relate_result = _safe_relate(text, package)
@@ -147,8 +148,17 @@ def build(package: Dict[str, Any]) -> Dict[str, Any]:
                 "examination_depth": examination.get("depth_signal", "simple"),
             }
         )
-    except Exception:
-        pass
+    except Exception as _exc:
+        # A-8: Contextualize audit failure is a security event.
+        # Attempt to record it; if that fails, write to stderr.
+        import sys as _sys
+        try:
+            memory.record(
+                event_type="CONTEXTUALIZE_AUDIT_FAIL",
+                notes=f"{type(_exc).__name__}: {_exc}",
+            )
+        except Exception:
+            print(f"[ONTO] CONTEXTUALIZE_AUDIT_FAIL: {_exc}", file=_sys.stderr)
 
     return enriched
 

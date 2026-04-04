@@ -334,16 +334,12 @@ class LocalAuthManager:
                 self._locked_until = (
                     time.monotonic() + LOCKOUT_DURATION_SECONDS
                 )
-                reason = (
-                    f"Too many failed attempts. "
-                    f"Locked for {LOCKOUT_DURATION_SECONDS} seconds."
-                )
+                # A-5: Do not reveal how many attempts triggered lockout.
+                reason = "Too many failed attempts. Please try again later."
             else:
-                remaining = MAX_ATTEMPTS - self._failed_attempts
-                reason = (
-                    f"Incorrect passphrase. "
-                    f"{remaining} attempt(s) remaining."
-                )
+                # A-5: Do not disclose remaining attempt count — it gives
+                # attackers a precise signal to manage their guessing budget.
+                reason = "Incorrect passphrase."
 
             if delay > 0:
                 time.sleep(delay)

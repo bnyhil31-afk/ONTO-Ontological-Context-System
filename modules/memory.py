@@ -603,6 +603,27 @@ def summarize() -> Dict[str, Any]:
 # CHAIN VERIFICATION (C2)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_genesis_hash() -> Optional[str]:
+    """
+    C-2 — T-001 Genesis Block Poisoning mitigation helper.
+
+    Returns the SHA-256 hash of the first (genesis) audit record.
+    Publish this value immediately after the first session to an external
+    location (e.g. a public Gist). Anyone can then run verify_chain()
+    and compare its first_record_hash against the published value to confirm
+    the audit trail has not been retroactively poisoned.
+
+    Returns None if the database has no records yet.
+
+    Usage:
+        python3 -m modules.memory genesis
+    """
+    records = read_all()
+    if not records:
+        return None
+    return _hash_record_content(records[0])
+
+
 def verify_chain() -> Dict[str, Any]:
     """
     Verifies the integrity of the Merkle chain.
@@ -738,3 +759,26 @@ def _hash_record_content(record_dict: Dict[str, Any]) -> str:
     }, sort_keys=True, default=str)
 
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI — python3 -m modules.memory genesis
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys as _sys
+    if len(_sys.argv) > 1 and _sys.argv[1] == "genesis":
+        initialize()
+        h = get_genesis_hash()
+        if h is None:
+            print("No records found. Run the system at least once first.")
+            _sys.exit(1)
+        print("\n  ONTO — Genesis Block Hash")
+        print("  ─" * 30)
+        print(f"\n  {h}\n")
+        print("  Publish this hash to an external, independently verifiable")
+        print("  location (e.g. a public Gist) to anchor your audit trail.")
+        print("  Anyone can verify it with: python3 -m modules.memory genesis")
+        print("  and compare against your published value.\n")
+    else:
+        print("Usage: python3 -m modules.memory genesis")

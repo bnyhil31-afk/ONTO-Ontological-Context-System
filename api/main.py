@@ -53,6 +53,7 @@ Documentation available at:
 
 import os
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
@@ -62,6 +63,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -166,6 +168,66 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORS (A-3) — Restrict to localhost only.
+# FastAPI defaults to allow-all origins; explicit restriction is required.
+# The "null" origin covers file:// local UIs (e.g. a local dashboard HTML).
+# ─────────────────────────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "null",  # file:// local UIs
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY HEADERS MIDDLEWARE (A-2)
+# Injected on every response. Protects against MIME sniffing, clickjacking,
+# and accidental token caching by intermediaries.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-XSS-Protection"] = "0"  # modern browsers ignore; 1 can be exploited
+    return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ERROR HELPER (A-1) — Opaque errors in production
+# In development mode, exception details are included to aid debugging.
+# In production, only a stable error code and a request ID are returned.
+# The full exception is always recorded to the permanent audit trail.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _safe_error(label: str, exc: Exception) -> str:
+    """
+    Build an error detail string safe for HTTP responses.
+    Development mode: includes exception type and message.
+    Production mode: opaque code + request ID only.
+    The full exception is always logged to the audit trail separately.
+    """
+    if not config.IS_PRODUCTION:
+        return f"{label}: {type(exc).__name__}: {exc}"
+    req_id = uuid.uuid4().hex[:8]
+    try:
+        memory.record(
+            event_type="PROCESSING_ERROR",
+            notes=f"[{req_id}] {label}: {type(exc).__name__}: {exc}",
+        )
+    except Exception:
+        pass
+    return f"processing_error (ref: {req_id})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,10 +456,7 @@ async def get_audit(
             order=order,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Audit query failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Audit query failed", exc))
  
     total = result["total"]
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
@@ -594,6 +653,10 @@ async def authenticate(body: AuthRequest):
     identity = result.identity or body.identity
     token = session_manager.start(identity=identity)
     result.clear_passphrase()
+    # A-6: Best-effort passphrase clearing from the Pydantic model.
+    # Python string immutability means the original string object can't
+    # be zeroed in memory, but we rebind the field to limit its lifetime.
+    body.passphrase = ""
 
     return AuthResponse(
         token=str(token),
@@ -664,10 +727,7 @@ async def process(
     try:
         package = intake.receive(body.input)
     except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Intake failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=422, detail=_safe_error("Intake failed", exc))
 
     if package.get("record_id"):
         record_ids.append(package["record_id"])
@@ -676,19 +736,13 @@ async def process(
     try:
         enriched = contextualize.build(package)
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Contextualize failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Contextualize failed", exc))
 
     # ── Step 3: NAVIGATE — surface ────────────────────────────────────────────
     try:
         surfaced = surface.present(enriched)
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Surface failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Surface failed", exc))
 
     if surfaced.get("record_id"):
         record_ids.append(surfaced["record_id"])

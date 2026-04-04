@@ -212,9 +212,12 @@ def receive(raw_input: str) -> Dict[str, Any]:
         classification=classification
     )
 
+    # A-9: Never allow downstream modules to fall back to raw unsanitized input.
+    # If sanitization produces an empty string, "clean" is "" (not raw).
+    # Downstream callers must use package["clean"] exclusively.
     return {
-        "raw": raw_input,
-        "clean": clean,
+        "raw": raw_input,          # preserved for audit; NOT for processing
+        "clean": clean,            # always use this for processing
         "input_type": input_type,
         "source": "human",
         "word_count": word_count,

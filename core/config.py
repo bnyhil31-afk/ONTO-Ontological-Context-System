@@ -211,7 +211,23 @@ class ONTOConfig:
             "  Your judgment matters more than anything this system says.\n"
             "  ─────────────────────────────────────────────────────\n"
         )
-        return os.environ.get("ONTO_CRISIS_RESPONSE_TEXT", default)
+        override = os.environ.get("ONTO_CRISIS_RESPONSE_TEXT", "")
+        if override:
+            # A-7: Validate that the override still contains at least one
+            # recognizable crisis resource. A malicious or misconfigured
+            # deployment must not replace safe-messaging text with harmful
+            # content. If validation fails, log and use the safe default.
+            _crisis_markers = ("988", "741741", "crisis", "helpline", "samaritans")
+            if any(m in override.lower() for m in _crisis_markers):
+                return override
+            import sys as _sys
+            print(
+                "[ONTO WARNING] ONTO_CRISIS_RESPONSE_TEXT override did not "
+                "contain a recognizable crisis resource reference. "
+                "Falling back to safe default.",
+                file=_sys.stderr,
+            )
+        return default
 
     @property
     def CRISIS_RESOURCES_BRIEF(self) -> str:

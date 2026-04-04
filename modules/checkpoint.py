@@ -62,6 +62,9 @@ def run(surface: dict, enriched_package: dict) -> dict:
     """
     from core.config import config
 
+    # B-2: Detect unauthorized replacement of the human gate.
+    _tamper_guard()
+
     input_text = enriched_package.get("clean", "")
     confidence = surface.get("confidence", 0.5)
     weight = surface.get("weight", 0.5)
@@ -187,6 +190,38 @@ def run(surface: dict, enriched_package: dict) -> dict:
 # INTERNAL HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# B-2: Tamper sentinel — the canonical identity of _ask_human at module load.
+# If anything replaces _ask_human after import (e.g. a monkey-patch that was
+# not properly restored), _tamper_guard() detects and records the event.
+# The api/main.py injector does a bounded replace+restore in a finally block,
+# so legitimate API use is not flagged.
+_ASK_HUMAN_SENTINEL: Optional[object] = None  # set after function definition
+
+
+def _tamper_guard() -> None:
+    """
+    B-2: Verify that _ask_human has not been silently replaced.
+    Called at the top of run() on every checkpoint invocation.
+    If a replacement is detected, records a CHECKPOINT_TAMPER audit event.
+    The function still proceeds — recording the tamper is more valuable
+    than crashing, which could suppress evidence.
+    """
+    import sys as _sys
+    current = globals().get("_ask_human")
+    if _ASK_HUMAN_SENTINEL is not None and current is not _ASK_HUMAN_SENTINEL:
+        try:
+            memory.record(
+                event_type="CHECKPOINT_TAMPER",
+                notes=(
+                    f"_ask_human has been replaced. "
+                    f"Expected sentinel, found: {type(current).__name__}. "
+                    "This may indicate an unauthorized bypass of the human gate."
+                ),
+            )
+        except Exception as _exc:
+            print(f"[ONTO] CHECKPOINT_TAMPER (audit failed): {_exc}", file=_sys.stderr)
+
+
 def _ask_human(
     prompt: str,
     options: Optional[List[str]] = None
@@ -234,3 +269,10 @@ def _decision_to_action(decision: str) -> str:
         "defer": "DEFER",
     }
     return mapping.get(decision, "VETO")
+
+
+# B-2: Register the sentinel AFTER _ask_human is defined.
+# The api/main.py injector temporarily replaces _ask_human; the sentinel
+# lets _tamper_guard() distinguish legitimate bounded replacements (which
+# restore the function in a finally block) from silent permanent ones.
+_ASK_HUMAN_SENTINEL = _ask_human

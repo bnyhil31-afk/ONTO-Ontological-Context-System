@@ -20,6 +20,7 @@ Usage:
         # handle rejection gracefully
 """
 
+import threading
 import time
 from collections import deque
 from typing import Tuple
@@ -31,14 +32,15 @@ class SlidingWindowRateLimiter:
     Tracks timestamps of recent inputs and enforces a maximum
     count within a configurable rolling time window.
 
-    Thread-safe for single-threaded use (ONTO's current model).
-    For multi-threaded deployments, add a threading.Lock.
+    Thread-safe: a threading.Lock protects the _timestamps deque so that
+    check_and_record() is atomic across concurrent FastAPI workers.
     """
 
     def __init__(self) -> None:
         # Load config lazily to avoid circular imports at module load
         self._timestamps: deque = deque()
         self._config = None
+        self._lock = threading.Lock()
 
     def _get_config(self):
         """Lazy load config to avoid circular imports."""
@@ -71,26 +73,27 @@ class SlidingWindowRateLimiter:
         if self.limit == 0:
             return True, ""
 
-        now = time.monotonic()
-        cutoff = now - self.window
+        with self._lock:
+            now = time.monotonic()
+            cutoff = now - self.window
 
-        # Remove timestamps outside the window
-        while self._timestamps and self._timestamps[0] < cutoff:
-            self._timestamps.popleft()
+            # Remove timestamps outside the window
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
 
-        if len(self._timestamps) >= self.limit:
-            # Calculate when the next input will be allowed
-            oldest = self._timestamps[0]
-            wait_seconds = int(self.window - (now - oldest)) + 1
-            reason = (
-                f"Rate limit reached: {self.limit} inputs per "
-                f"{self.window} seconds. "
-                f"Please wait approximately {wait_seconds} second(s) "
-                f"before trying again."
-            )
-            return False, reason
+            if len(self._timestamps) >= self.limit:
+                # Calculate when the next input will be allowed
+                oldest = self._timestamps[0]
+                wait_seconds = int(self.window - (now - oldest)) + 1
+                reason = (
+                    f"Rate limit reached: {self.limit} inputs per "
+                    f"{self.window} seconds. "
+                    f"Please wait approximately {wait_seconds} second(s) "
+                    f"before trying again."
+                )
+                return False, reason
 
-        return True, ""
+            return True, ""
 
     def record(self) -> None:
         """
@@ -98,33 +101,54 @@ class SlidingWindowRateLimiter:
         Call this after check() returns True and the input
         has been accepted for processing.
         """
-        self._timestamps.append(time.monotonic())
+        with self._lock:
+            self._timestamps.append(time.monotonic())
 
     def check_and_record(self) -> Tuple[bool, str]:
         """
-        Convenience method: check and record in one call.
-        Use when you want to accept the input immediately
-        if the check passes.
+        Atomically check and record in one call.
+        The lock is held across both operations so concurrent callers
+        cannot both pass check() before either records.
 
         Returns:
             (True, "") if allowed and recorded.
             (False, reason) if rate limited — nothing recorded.
         """
-        allowed, reason = self.check()
-        if allowed:
-            self.record()
-        return allowed, reason
+        if self.limit == 0:
+            return True, ""
+
+        with self._lock:
+            now = time.monotonic()
+            cutoff = now - self.window
+
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
+
+            if len(self._timestamps) >= self.limit:
+                oldest = self._timestamps[0]
+                wait_seconds = int(self.window - (now - oldest)) + 1
+                reason = (
+                    f"Rate limit reached: {self.limit} inputs per "
+                    f"{self.window} seconds. "
+                    f"Please wait approximately {wait_seconds} second(s) "
+                    f"before trying again."
+                )
+                return False, reason
+
+            self._timestamps.append(now)
+            return True, ""
 
     def current_count(self) -> int:
         """
         Number of inputs recorded in the current window.
         Useful for diagnostics and testing.
         """
-        now = time.monotonic()
-        cutoff = now - self.window
-        while self._timestamps and self._timestamps[0] < cutoff:
-            self._timestamps.popleft()
-        return len(self._timestamps)
+        with self._lock:
+            now = time.monotonic()
+            cutoff = now - self.window
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
+            return len(self._timestamps)
 
     def reset(self) -> None:
         """
@@ -132,7 +156,8 @@ class SlidingWindowRateLimiter:
         Use in tests and for operator-level resets.
         Does NOT change the limit or window settings.
         """
-        self._timestamps.clear()
+        with self._lock:
+            self._timestamps.clear()
 
 
 # Single shared instance — import this everywhere
