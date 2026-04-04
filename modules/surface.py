@@ -263,6 +263,18 @@ def _build_moderate_display(
     if gap_flags:
         lines.append(f"\nGap: {gap_flags[0]}")
 
+    # EU AI Act Art. 14 — bias transparency: warn in moderate mode too.
+    # (Also shown in complex mode — see _build_complex_display.)
+    diversity_ratio = confidence_profile.get("diversity_ratio", 1.0)
+    total_obs = confidence_profile.get("total_observations", 0)
+    source_count = confidence_profile.get("source_count", 0)
+    if total_obs > 1 and diversity_ratio < 0.3 and source_count > 0:
+        lines.append(
+            f"\n  ⚠ Diversity note: {total_obs} observations, "
+            f"but only {source_count} distinct source(s). "
+            "Repetition does not increase reliability."
+        )
+
     return "\n".join(lines)
 
 

@@ -71,7 +71,7 @@ from core.config import config
 from core.ratelimit import rate_limiter
 from core.session import session_manager
 from core.verify import verify_principles
-from modules import checkpoint, contextualize, intake, memory, surface
+from modules import checkpoint, contextualize, graph, intake, memory, surface
 from modules.checkpoint import ALWAYS_ASK_CONFIDENCE, ALWAYS_ASK_WEIGHT
 
 
@@ -365,8 +365,47 @@ class AuditSummaryResponse(BaseModel):
     chain_intact: bool
     chain_total: int
     chain_gaps: int
- 
- 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPLIANCE RESPONSE MODELS (GAP-1, GAP-2, GAP-9)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DataExportResponse(BaseModel):
+    format_version: str
+    export_schema: str
+    generated_at: str
+    subject: str
+    classification_filter: int
+    record_count: int
+    records: List[dict]
+    graph_snapshot: Optional[dict] = None
+    compliance: dict
+
+
+class ErasureResponse(BaseModel):
+    erased: bool
+    nodes_deleted: int
+    edges_deleted: int
+    audit_event_id: Optional[int] = None
+    gdpr_article: str = "17"
+    timestamp: str
+
+
+class TransparencyResponse(BaseModel):
+    system: str
+    version: str
+    compliance_stage: str
+    data_controller: str
+    transparency_contact: str
+    active_rights: List[str]
+    known_limitations: List[str]
+    data_classifications_in_use: List[str]
+    eu_ai_act_articles_addressed: List[str]
+    gdpr_articles_addressed: List[str]
+    generated_at: str
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # EXPANDED AUDIT ENDPOINTS
 # Replace the existing get_audit() endpoint and add two new endpoints.
@@ -1022,5 +1061,199 @@ async def logout(auth: tuple = Depends(_require_session)):
         content={
             "status": "logged_out",
             "identity": session.identity,
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATA SUBJECT RIGHTS — GDPR Art. 15, 17, 20 + EU AI Act Art. 13
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get(
+    "/data/export",
+    response_model=DataExportResponse,
+    tags=["Compliance"],
+    summary="GDPR Art. 15/20 — Export all personal data for the data subject",
+)
+async def data_export(
+    classification_min: int = 2,
+    include_graph: bool = False,
+    auth: tuple = Depends(_require_session),
+):
+    """
+    Right of Access (GDPR Article 15) and Right to Portability (GDPR Article 20).
+
+    Returns all audit trail records at or above the requested classification
+    level in a machine-readable JSON format. Optionally includes a snapshot of
+    the relationship graph (all nodes and edges derived from personal inputs).
+
+    A READ_ACCESS event is permanently recorded in the audit trail.
+
+    Query parameters:
+      classification_min  Minimum classification level. Default: 2 (personal data).
+                          Set to 0 to export all records (requires
+                          ONTO_COMPLIANCE_EXPORT_ALL=true in production).
+      include_graph       If true, include relationship graph snapshot (Art. 20).
+    """
+    _, new_token = auth
+
+    # In production, require ONTO_COMPLIANCE_EXPORT_ALL=true to export
+    # records below classification 2 (personal data threshold).
+    if config.IS_PRODUCTION and not config.COMPLIANCE_EXPORT_ALL_CLASSIFICATIONS:
+        classification_min = max(classification_min, 2)
+
+    try:
+        result = memory.export_personal_data(
+            classification_min=classification_min,
+            include_graph_snapshot=include_graph,
+            accessor_id="data_subject",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_error("data_export", exc),
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content=result,
+        headers=_session_headers(new_token),
+    )
+
+
+@app.delete(
+    "/data/erasure",
+    response_model=ErasureResponse,
+    tags=["Compliance"],
+    summary="GDPR Art. 17 — Delete the relationship graph (right to erasure)",
+)
+async def data_erasure(auth: tuple = Depends(_require_session)):
+    """
+    Right to Erasure (GDPR Article 17).
+
+    Deletes all nodes and edges from the relationship graph. The graph stores
+    personal associative data derived from inputs. Deletion is immediate.
+
+    The audit trail (memory.py) is NOT erased — it records only that erasure
+    occurred, not the content. This is consistent with the cryptographic erasure
+    architecture (append-only audit trail with encrypted payload; erasure =
+    payload key destruction for classified records).
+
+    Two audit events are permanently recorded:
+      - GRAPH_WIPE — written by graph.wipe() with node/edge counts
+      - ERASURE_REQUEST — written here, confirming the API invocation
+
+    The PPR cache is also invalidated. PPMI counters are reset.
+    """
+    _, new_token = auth
+
+    try:
+        wipe_result = graph.wipe()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_error("data_erasure_graph", exc),
+        )
+
+    # Record the API-level erasure request separately from the graph-level GRAPH_WIPE
+    erasure_event_id: Optional[int] = None
+    try:
+        erasure_event_id = memory.record(
+            event_type="ERASURE_REQUEST",
+            notes=(
+                "GDPR Art. 17 right-to-erasure invoked via DELETE /data/erasure. "
+                f"Graph cleared: {wipe_result.get('nodes_deleted', 0)} nodes, "
+                f"{wipe_result.get('edges_deleted', 0)} edges."
+            ),
+        )
+    except Exception:
+        pass  # Audit failure must not block a legitimate erasure
+
+    from datetime import datetime, timezone as _tz
+    return JSONResponse(
+        status_code=200,
+        content={
+            "erased": True,
+            "nodes_deleted": wipe_result.get("nodes_deleted", 0),
+            "edges_deleted": wipe_result.get("edges_deleted", 0),
+            "audit_event_id": erasure_event_id,
+            "gdpr_article": "17",
+            "timestamp": datetime.now(_tz.utc).isoformat(),
+        },
+        headers=_session_headers(new_token),
+    )
+
+
+@app.get(
+    "/system/transparency",
+    response_model=TransparencyResponse,
+    tags=["Compliance"],
+    summary="EU AI Act Art. 13 — System transparency and known limitations disclosure",
+)
+async def system_transparency():
+    """
+    Transparency disclosure for EU AI Act Article 13 (and GDPR Art. 13/14).
+
+    Returns factual information about this system: compliance stage, data
+    controller identity, known limitations, and which data subject rights
+    are active in this deployment.
+
+    This endpoint requires no authentication — it is a public disclosure.
+    """
+    from datetime import datetime, timezone as _tz
+
+    # Factual system properties — not config-driven, as they describe the code.
+    known_limitations = [
+        "Classification is keyword-heuristic only — not ML-based at Stage 1.",
+        "CRISIS detection is keyword-based — not a clinical assessment tool.",
+        "Graph relationships are derived from inputs, not verified ground truth.",
+        "Consent ledger is not yet active — deferred to Stage 2.",
+        "Single-user deployment only — no RBAC at Stage 1.",
+        "Right to correct is not supported (append-only audit trail).",
+        "Bias monitoring is designed but not yet implemented (Stage 2).",
+        "Field-level encryption for HIPAA PHI is deferred to Stage 2.",
+    ]
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "system": "ONTO Ontological Context System",
+            "version": "1.0.0",
+            "compliance_stage": config.COMPLIANCE_STAGE,
+            "data_controller": config.COMPLIANCE_DATA_CONTROLLER,
+            "transparency_contact": config.COMPLIANCE_TRANSPARENCY_CONTACT,
+            "active_rights": [
+                "access (GDPR Art. 15) — GET /data/export",
+                "erasure (GDPR Art. 17) — DELETE /data/erasure",
+                "portability (GDPR Art. 20) — GET /data/export?include_graph=true",
+                "object to automated decision (GDPR Art. 22) — veto at checkpoint",
+            ],
+            "known_limitations": known_limitations,
+            "data_classifications_in_use": [
+                "0 — public (no sensitivity)",
+                "1 — internal (organizational sensitivity)",
+                "2 — personal (identifying information; read-logged)",
+                "3 — sensitive (health, financial, legal, biometric; read-logged)",
+                "4 — privileged (attorney-client, clinical, clergy)",
+                "5 — critical (existential risk if exposed)",
+            ],
+            "eu_ai_act_articles_addressed": [
+                "Art. 13 — transparency (this endpoint)",
+                "Art. 14(1) — bias disclosure (source diversity warning)",
+                "Art. 14(4)(b) — automation bias warning at every checkpoint",
+            ],
+            "gdpr_articles_addressed": [
+                "Art. 5 — data minimization (PPMI + concept cap)",
+                "Art. 6 — legal basis annotated in every intake record",
+                "Art. 13/14 — controller identity via this endpoint",
+                "Art. 15 — right of access via GET /data/export",
+                "Art. 17 — right to erasure via DELETE /data/erasure",
+                "Art. 20 — portability via GET /data/export?include_graph=true",
+                "Art. 22 — automated decision disclosure in audit records",
+                "Art. 25 — privacy by design (append-only, encrypted, classified)",
+                "Art. 30 — records of processing (full audit trail)",
+                "Art. 32 — security measures (AES-256-GCM, Argon2id, Merkle chain)",
+            ],
+            "generated_at": datetime.now(_tz.utc).isoformat(),
         },
     )

@@ -299,6 +299,72 @@ class ONTOConfig:
             return 28800
 
     # ─────────────────────────────────────────────────────────────────────────
+    # COMPLIANCE
+    # Configurable compliance posture. All Stage 1 defaults are safe for
+    # single-operator local use. Override via environment for deployment.
+    # Stage 2 will expand these with consent ledger and RBAC integration.
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def COMPLIANCE_STAGE(self) -> str:
+        """
+        Deployment compliance stage. Machine-readable marker.
+        Default: "1" (single-user, local).
+        Stage 2 = multi-user with consent ledger and RBAC.
+        Set ONTO_COMPLIANCE_STAGE to override.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_STAGE", "1")
+
+    @property
+    def COMPLIANCE_LEGAL_BASIS_DEFAULT(self) -> str:
+        """
+        GDPR Article 6 legal basis annotated in every INTAKE audit record.
+        Default: "legitimate_interest_single_operator" (Stage 1, operator = subject).
+        Set ONTO_COMPLIANCE_LEGAL_BASIS to override.
+        Valid values: legitimate_interest_single_operator | consent |
+                      contract | legal_obligation
+        Stage 2: replaced by per-request consent ledger lookup.
+        """
+        return os.environ.get(
+            "ONTO_COMPLIANCE_LEGAL_BASIS",
+            "legitimate_interest_single_operator",
+        )
+
+    @property
+    def COMPLIANCE_DATA_CONTROLLER(self) -> str:
+        """
+        GDPR Article 13/14 data controller identity.
+        Returned by GET /system/transparency.
+        Default: "local_operator".
+        Set ONTO_COMPLIANCE_DATA_CONTROLLER to the name of the deploying entity.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_DATA_CONTROLLER", "local_operator")
+
+    @property
+    def COMPLIANCE_TRANSPARENCY_CONTACT(self) -> str:
+        """
+        Data subject rights contact point (GDPR Art. 13/14).
+        Returned by GET /system/transparency.
+        Default: "" (empty = self-service; operator = subject in Stage 1).
+        Set ONTO_COMPLIANCE_TRANSPARENCY_CONTACT for multi-user deployments.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_TRANSPARENCY_CONTACT", "")
+
+    @property
+    def COMPLIANCE_EXPORT_ALL_CLASSIFICATIONS(self) -> bool:
+        """
+        If True, GET /data/export includes all records regardless of
+        classification level. If False (default), only records with
+        classification >= 2 (personal data) are included.
+        Set ONTO_COMPLIANCE_EXPORT_ALL=true to override.
+        Stage 2: replaced by per-requester RBAC authorization level.
+        """
+        value = os.environ.get("ONTO_COMPLIANCE_EXPORT_ALL", "false")
+        return value.lower() in ("true", "1", "yes")
+
+    # STAGE-2: add COMPLIANCE_CONSENT_LEDGER_URL property (reserved, empty default)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # SUMMARY
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -327,6 +393,13 @@ class ONTOConfig:
             ),
             f"Session idle timeout: {self.SESSION_IDLE_TIMEOUT_SECONDS}s",
             f"Session max duration: {self.SESSION_MAX_DURATION_SECONDS}s",
+            f"Compliance stage:     {self.COMPLIANCE_STAGE}",
+            f"Legal basis default:  {self.COMPLIANCE_LEGAL_BASIS_DEFAULT}",
+            f"Data controller:      {self.COMPLIANCE_DATA_CONTROLLER}",
+            (
+                "Transparency contact: "
+                f"{'SET' if self.COMPLIANCE_TRANSPARENCY_CONTACT else 'not set'}"
+            ),
             "─" * 40,
         ]
         if not self.IS_PRODUCTION:

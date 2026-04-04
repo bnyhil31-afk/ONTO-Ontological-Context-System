@@ -195,6 +195,12 @@ def receive(raw_input: str) -> Dict[str, Any]:
     complexity = _assess_complexity(clean, word_count)
     input_type = _classify_input_type(clean)
 
+    # GAP-5: GDPR Art. 6 — annotate legal basis in every intake record.
+    # At Stage 1 (single operator = subject), legitimate interest applies.
+    # STAGE-2: replace config lookup with consent_ledger.get_active_basis(identity)
+    from core.config import config as _config
+    legal_basis = _config.COMPLIANCE_LEGAL_BASIS_DEFAULT
+
     # Step 5 — Record and return
     # Store context dict so downstream modules can read sanitization state
     record_id = memory.record(
@@ -207,8 +213,12 @@ def receive(raw_input: str) -> Dict[str, Any]:
             "complexity": complexity,
             "classification": classification,
             "word_count": word_count,
+            "legal_basis": legal_basis,
         },
-        notes=f"source:human | complexity:{complexity} | type:{input_type}",
+        notes=(
+            f"source:human | complexity:{complexity} | type:{input_type}"
+            f" | legal_basis:{legal_basis}"
+        ),
         classification=classification
     )
 
@@ -228,6 +238,7 @@ def receive(raw_input: str) -> Dict[str, Any]:
         "record_id": record_id,
         "classification": classification,  # C3 — propagates forward
         "classification_basis": "auto-detected",
+        "legal_basis": legal_basis,        # GDPR Art. 6 — propagates forward
     }
 
 

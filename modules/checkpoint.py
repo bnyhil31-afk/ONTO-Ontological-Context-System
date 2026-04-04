@@ -65,6 +65,12 @@ def run(surface: dict, enriched_package: dict) -> dict:
     # B-2: Detect unauthorized replacement of the human gate.
     _tamper_guard()
 
+    # GAP-7: GDPR Art. 7 — consent_reference propagates from intake package.
+    # At Stage 1 (operator = subject), consent is implicit; we record that.
+    # STAGE-2: consent_reference populated by consent ledger in intake.receive()
+    consent_reference = enriched_package.get("consent_reference", None)
+    consent_ref_note = f" | consent_ref:{consent_reference or 'stage1_implicit'}"
+
     input_text = enriched_package.get("clean", "")
     confidence = surface.get("confidence", 0.5)
     weight = surface.get("weight", 0.5)
@@ -94,6 +100,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
                 "CRISIS checkpoint. Safe messaging displayed. "
                 "Human response recorded. "
                 f"Resources shown: {config.CRISIS_RESOURCES_BRIEF}"
+                f"{consent_ref_note}"
             ),
             classification=enriched_package.get("classification", 0)
         )
@@ -115,7 +122,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
             event_type="CHECKPOINT",
             input_data=input_text,
             human_decision=decision,
-            notes="Safety checkpoint — human response recorded.",
+            notes=f"Safety checkpoint — human response recorded.{consent_ref_note}",
             classification=enriched_package.get("classification", 0)
         )
         return {
@@ -144,7 +151,12 @@ def run(surface: dict, enriched_package: dict) -> dict:
             output="AUTO_PROCEED",
             human_decision="AUTO_PROCEED",
             confidence=confidence,
-            notes="Routine input — checkpoint skipped. Auto-proceeded.",
+            notes=(
+                "Routine input — checkpoint skipped. Auto-proceeded. "
+                "GDPR-22: automated decision without human review — "
+                f"basis: low weight ({weight:.2f}) + high confidence ({confidence:.2f}) "
+                f"(non-consequential).{consent_ref_note}"
+            ),
             classification=enriched_package.get("classification", 0)
         )
         print("\n  [AUTO] Routine input. Proceeding.")
@@ -152,7 +164,8 @@ def run(surface: dict, enriched_package: dict) -> dict:
             "decision": "AUTO_PROCEED",
             "action": "PROCEED",
             "skipped": True,
-            "record_id": record_id
+            "record_id": record_id,
+            "gdpr22_automated": True,   # GAP-11: GDPR Art. 22 disclosure flag
         }
 
     # ── Ask human — with automation bias reminder ─────────────────────────────
@@ -174,6 +187,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
         notes=(
             f"Human checkpoint. Weight: {weight:.2f}. "
             f"Confidence: {confidence:.2f}. Decision: {decision}."
+            f"{consent_ref_note}"
         ),
         classification=enriched_package.get("classification", 0)
     )
