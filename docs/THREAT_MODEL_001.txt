@@ -56,13 +56,14 @@ IMPACT:    The entire audit history is built on a fraudulent foundation.
            All subsequent records appear legitimate but are not.
 LIKELIHOOD: Medium (requires database access)
 SEVERITY:  Critical
-STATUS:    Open
-MITIGATION: Publish the genesis block hash to the public Gist
-            immediately after first COMMIT record is created.
-            Anyone can then verify the chain started legitimately.
-            This is the same mechanism used for the principles hash.
+STATUS:    Partially mitigated (code) — manual publication step required
+MITIGATION: memory.get_genesis_hash() returns the hash of the first record.
+            CLI: python3 -m modules.memory genesis prints it with instructions.
+            Operator must publish this hash to an external location (public Gist
+            or similar) immediately after first session. Anyone can verify with
+            the same CLI command.
 OWNER:     Neo
-CHECKLIST: 2.01 (database hardening) + manual step at first deployment
+CHECKLIST: 2.01 (database hardening) + run genesis CLI after first session
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -213,12 +214,16 @@ IMPACT:    Legitimate users receive attacker-influenced context
            when querying related topics.
 LIKELIHOOD: Medium
 SEVERITY:  High
-STATUS:    Open
-MITIGATION: Rate limiting (2.05 ✅) partially mitigates.
-            Weight decay must account for source distribution.
-            Maximum edge weight per source regardless of volume.
+STATUS:    Partially mitigated
+MITIGATION: Rate limiting (2.05 ✅) limits volume per window.
+            Per-source edge weight cap added in graph.py: if a single
+            source account for >40% of edges on a concept node,
+            new reinforcement from that source is capped at
+            SENSITIVE_REINFORCEMENT (0.02) rather than BASE_REINFORCEMENT
+            (0.08). This limits single-source dominance even at max rate.
+            Full longitudinal bias monitoring deferred to Stage 2.
 OWNER:     Neo
-CHECKLIST: 2.05 ✅ + bias monitor enhancement
+CHECKLIST: 2.05 ✅ + bias monitor enhancement (Stage 2)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -252,13 +257,19 @@ IMPACT:    Complete system compromise — attacker gains full access
            and can decrypt all data.
 LIKELIHOOD: High if not explicitly designed against
 SEVERITY:  Critical
-STATUS:    Open — being addressed in 2.02
+STATUS:    Mitigated
 MITIGATION: Passphrase derives the encryption key at runtime only.
             It is never written anywhere. It exists only in memory
             during the session and is cleared after key derivation.
-            Key derivation uses PBKDF2 with high iteration count.
+            Key derivation uses Argon2id (OWASP 2025) — memory-hard,
+            GPU/ASIC resistant, post-quantum resistant. Upgraded from
+            PBKDF2 in security review pass (REVIEW_001 C1+U2).
+            In the API, the passphrase field is cleared from the Pydantic
+            request model immediately after key derivation (A-6).
+            Python string immutability means the original object may
+            remain in heap until GC — documented as accepted residual risk.
 OWNER:     Neo
-CHECKLIST: 2.02 (authentication implementation)
+CHECKLIST: 2.02 ✅ (authentication implementation)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

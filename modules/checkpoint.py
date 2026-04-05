@@ -62,6 +62,15 @@ def run(surface: dict, enriched_package: dict) -> dict:
     """
     from core.config import config
 
+    # B-2: Detect unauthorized replacement of the human gate.
+    _tamper_guard()
+
+    # GAP-7: GDPR Art. 7 — consent_reference propagates from intake package.
+    # At Stage 1 (operator = subject), consent is implicit; we record that.
+    # STAGE-2: consent_reference populated by consent ledger in intake.receive()
+    consent_reference = enriched_package.get("consent_reference", None)
+    consent_ref_note = f" | consent_ref:{consent_reference or 'stage1_implicit'}"
+
     input_text = enriched_package.get("clean", "")
     confidence = surface.get("confidence", 0.5)
     weight = surface.get("weight", 0.5)
@@ -91,6 +100,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
                 "CRISIS checkpoint. Safe messaging displayed. "
                 "Human response recorded. "
                 f"Resources shown: {config.CRISIS_RESOURCES_BRIEF}"
+                f"{consent_ref_note}"
             ),
             classification=enriched_package.get("classification", 0)
         )
@@ -112,7 +122,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
             event_type="CHECKPOINT",
             input_data=input_text,
             human_decision=decision,
-            notes="Safety checkpoint — human response recorded.",
+            notes=f"Safety checkpoint — human response recorded.{consent_ref_note}",
             classification=enriched_package.get("classification", 0)
         )
         return {
@@ -138,10 +148,15 @@ def run(surface: dict, enriched_package: dict) -> dict:
         record_id = memory.record(
             event_type="CHECKPOINT",
             input_data=input_text,
-            output="AUTO_PROCEED",
+            output="AUTO_PROCEED|GDPR_22_DISCLOSED",   # machine-parseable; query-able
             human_decision="AUTO_PROCEED",
             confidence=confidence,
-            notes="Routine input — checkpoint skipped. Auto-proceeded.",
+            notes=(
+                "Routine input — checkpoint skipped. Auto-proceeded. "
+                "GDPR-22: automated decision without human review — "
+                f"basis: low weight ({weight:.2f}) + high confidence ({confidence:.2f}) "
+                f"(non-consequential).{consent_ref_note}"
+            ),
             classification=enriched_package.get("classification", 0)
         )
         print("\n  [AUTO] Routine input. Proceeding.")
@@ -149,7 +164,8 @@ def run(surface: dict, enriched_package: dict) -> dict:
             "decision": "AUTO_PROCEED",
             "action": "PROCEED",
             "skipped": True,
-            "record_id": record_id
+            "record_id": record_id,
+            "gdpr22_automated": True,   # GAP-11: GDPR Art. 22 disclosure flag
         }
 
     # ── Ask human — with automation bias reminder ─────────────────────────────
@@ -171,6 +187,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
         notes=(
             f"Human checkpoint. Weight: {weight:.2f}. "
             f"Confidence: {confidence:.2f}. Decision: {decision}."
+            f"{consent_ref_note}"
         ),
         classification=enriched_package.get("classification", 0)
     )
@@ -186,6 +203,38 @@ def run(surface: dict, enriched_package: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # INTERNAL HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
+
+# B-2: Tamper sentinel — the canonical identity of _ask_human at module load.
+# If anything replaces _ask_human after import (e.g. a monkey-patch that was
+# not properly restored), _tamper_guard() detects and records the event.
+# The api/main.py injector does a bounded replace+restore in a finally block,
+# so legitimate API use is not flagged.
+_ASK_HUMAN_SENTINEL: Optional[object] = None  # set after function definition
+
+
+def _tamper_guard() -> None:
+    """
+    B-2: Verify that _ask_human has not been silently replaced.
+    Called at the top of run() on every checkpoint invocation.
+    If a replacement is detected, records a CHECKPOINT_TAMPER audit event.
+    The function still proceeds — recording the tamper is more valuable
+    than crashing, which could suppress evidence.
+    """
+    import sys as _sys
+    current = globals().get("_ask_human")
+    if _ASK_HUMAN_SENTINEL is not None and current is not _ASK_HUMAN_SENTINEL:
+        try:
+            memory.record(
+                event_type="CHECKPOINT_TAMPER",
+                notes=(
+                    f"_ask_human has been replaced. "
+                    f"Expected sentinel, found: {type(current).__name__}. "
+                    "This may indicate an unauthorized bypass of the human gate."
+                ),
+            )
+        except Exception as _exc:
+            print(f"[ONTO] CHECKPOINT_TAMPER (audit failed): {_exc}", file=_sys.stderr)
+
 
 def _ask_human(
     prompt: str,
@@ -234,3 +283,10 @@ def _decision_to_action(decision: str) -> str:
         "defer": "DEFER",
     }
     return mapping.get(decision, "VETO")
+
+
+# B-2: Register the sentinel AFTER _ask_human is defined.
+# The api/main.py injector temporarily replaces _ask_human; the sentinel
+# lets _tamper_guard() distinguish legitimate bounded replacements (which
+# restore the function in a finally block) from silent permanent ones.
+_ASK_HUMAN_SENTINEL = _ask_human

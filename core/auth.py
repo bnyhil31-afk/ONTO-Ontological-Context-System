@@ -264,7 +264,7 @@ class LocalAuthManager:
                 identity="",
                 reason=(
                     f"Too many failed attempts. "
-                    f"Try again in {remaining} seconds."
+                    f"Try again later (in {remaining} seconds)."
                 )
             )
 
@@ -313,8 +313,17 @@ class LocalAuthManager:
         else:
             auth_salt = bytes.fromhex(auth_salt_hex)
 
-        # Compute and compare
-        entered_hash = self._hash_passphrase(entered, auth_salt)
+        # Compute and compare — use stored params so verification works even
+        # when module defaults change between versions.
+        stored_params = state.get("algorithm_params", {})
+        entered_hash = self._hash_passphrase(
+            entered,
+            auth_salt,
+            time_cost=stored_params.get("time_cost", AUTH_ARGON2_TIME_COST),
+            memory_cost=stored_params.get("memory_kb", AUTH_ARGON2_MEMORY_KB),
+            parallelism=stored_params.get("parallelism", AUTH_ARGON2_PARALLELISM),
+            hash_len=stored_params.get("hash_len", AUTH_ARGON2_HASH_LEN),
+        )
 
         if self._constant_time_compare(entered_hash, stored_hash):
             self._failed_attempts = 0
@@ -334,16 +343,13 @@ class LocalAuthManager:
                 self._locked_until = (
                     time.monotonic() + LOCKOUT_DURATION_SECONDS
                 )
-                reason = (
-                    f"Too many failed attempts. "
-                    f"Locked for {LOCKOUT_DURATION_SECONDS} seconds."
-                )
+                # A-5: Do not reveal how many attempts triggered lockout.
+                reason = "Too many failed attempts. Please try again later."
             else:
-                remaining = MAX_ATTEMPTS - self._failed_attempts
-                reason = (
-                    f"Incorrect passphrase. "
-                    f"{remaining} attempt(s) remaining."
-                )
+                # A-5: Do not disclose remaining attempt count — it gives
+                # attackers a precise signal to manage their guessing budget.
+                # Mention "attempt" so users know repeated failures lead to lockout.
+                reason = "Incorrect passphrase. Too many failed attempts will lock this account."
 
             if delay > 0:
                 time.sleep(delay)
@@ -390,7 +396,16 @@ class LocalAuthManager:
     # CRYPTOGRAPHIC HELPERS — ARGON2ID (OWASP 2025)
     # ─────────────────────────────────────────────────────────────────
 
-    def _hash_passphrase(self, passphrase: str, salt: bytes) -> str:
+    def _hash_passphrase(
+        self,
+        passphrase: str,
+        salt: bytes,
+        *,
+        time_cost: int = AUTH_ARGON2_TIME_COST,
+        memory_cost: int = AUTH_ARGON2_MEMORY_KB,
+        parallelism: int = AUTH_ARGON2_PARALLELISM,
+        hash_len: int = AUTH_ARGON2_HASH_LEN,
+    ) -> str:
         """
         Hashes a passphrase using Argon2id with the provided salt.
 
@@ -399,20 +414,28 @@ class LocalAuthManager:
           - GPU/ASIC resistant: parallel attacks are expensive
           - Post-quantum resistant: memory-hardness defeats Grover speedup
           - Random per-installation salt: defeats rainbow tables
+
+        Keyword args allow callers to pass stored algorithm_params so that
+        verification uses the same parameters that were used during setup,
+        which is required for forward compatibility when defaults change.
         """
         from argon2.low_level import hash_secret_raw, Type
 
         # Never substitute a random salt — the caller is always responsible
         # for providing the correct salt. A random fallback would produce
         # an irreproducible hash, making every authentication attempt fail.
-        # Argon2 requires salt length >= 8 bytes; callers must ensure this.
+        # Argon2 requires salt length >= 8 bytes; legacy auth.json files
+        # that stored no auth_salt use a fixed zero-byte sentinel for
+        # deterministic verification.
+        effective_salt = salt if len(salt) >= 8 else b"\x00" * 8
+
         key = hash_secret_raw(
             secret=passphrase.encode("utf-8"),
-            salt=salt,
-            time_cost=AUTH_ARGON2_TIME_COST,
-            memory_cost=AUTH_ARGON2_MEMORY_KB,
-            parallelism=AUTH_ARGON2_PARALLELISM,
-            hash_len=AUTH_ARGON2_HASH_LEN,
+            salt=effective_salt,
+            time_cost=time_cost,
+            memory_cost=memory_cost,
+            parallelism=parallelism,
+            hash_len=hash_len,
             type=Type.ID
         )
         return key.hex()

@@ -166,7 +166,7 @@ def _build_simple_display(
     Simple depth display.
     Clean, direct, minimal framing. Respects that the user didn't ask for more.
     """
-    text = enriched.get("clean") or enriched.get("raw") or ""
+    text = enriched.get("clean", "")
     context = enriched.get("context") or {}
     related_count = context.get("related_count", 0)
     novelty = examination.get("novelty", "first_seen")
@@ -210,7 +210,7 @@ def _build_moderate_display(
     Moderate depth display.
     Brief context note when genuinely useful. Not imposed.
     """
-    text = enriched.get("clean") or enriched.get("raw") or ""
+    text = enriched.get("clean", "")
     context = enriched.get("context") or {}
     related_count = context.get("related_count", 0)
     graph_context = enriched.get("graph_context") or []
@@ -263,6 +263,18 @@ def _build_moderate_display(
     if gap_flags:
         lines.append(f"\nGap: {gap_flags[0]}")
 
+    # EU AI Act Art. 14 — bias transparency: warn in moderate mode too.
+    # (Also shown in complex mode — see _build_complex_display.)
+    diversity_ratio = confidence_profile.get("diversity_ratio", 1.0)
+    total_obs = confidence_profile.get("total_observations", 0)
+    source_count = confidence_profile.get("source_count", 0)
+    if total_obs > 1 and diversity_ratio < 0.3 and source_count > 0:
+        lines.append(
+            f"\n  ⚠ Diversity note: {total_obs} observations, "
+            f"but only {source_count} distinct source(s). "
+            "Repetition does not increase reliability."
+        )
+
     return "\n".join(lines)
 
 
@@ -275,7 +287,7 @@ def _build_complex_display(
     Full examination visible. Shows path, not just destination.
     Appropriate for deeply engaged input. Not imposed on simple requests.
     """
-    text = enriched.get("clean") or enriched.get("raw") or ""
+    text = enriched.get("clean", "")
     context = enriched.get("context") or {}
     related_count = context.get("related_count", 0)
     graph_context = enriched.get("graph_context") or []
@@ -463,7 +475,7 @@ def _record_surface(
 
     Every surface event is recorded — the trail is always on.
     """
-    text = (enriched.get("clean") or enriched.get("raw") or "")[:200]
+    text = enriched.get("clean", "")[:200]
     depth = examination.get("depth_signal", "simple")
     epistemic = examination.get("epistemic_status", "unknown")
 
@@ -479,6 +491,17 @@ def _record_surface(
                 "consistency": examination.get("consistency", "unknown"),
             }
         )
-        return record_id if isinstance(record_id, int) else 1
-    except Exception:
-        return 1
+        return record_id if isinstance(record_id, int) else None
+    except Exception as _exc:
+        # A-8: Surface audit failure is itself a security event.
+        # Attempt to record it. If that also fails, write to stderr.
+        # Never return record_id=1 — that falsely implies genesis record.
+        import sys as _sys
+        try:
+            memory.record(
+                event_type="SURFACE_AUDIT_FAIL",
+                notes=f"{type(_exc).__name__}: {_exc}",
+            )
+        except Exception:
+            print(f"[ONTO] SURFACE_AUDIT_FAIL: {_exc}", file=_sys.stderr)
+        return None

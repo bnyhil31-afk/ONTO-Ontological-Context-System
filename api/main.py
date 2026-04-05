@@ -53,6 +53,7 @@ Documentation available at:
 
 import os
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
@@ -62,6 +63,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -69,7 +71,7 @@ from core.config import config
 from core.ratelimit import rate_limiter
 from core.session import session_manager
 from core.verify import verify_principles
-from modules import checkpoint, contextualize, intake, memory, surface
+from modules import checkpoint, contextualize, graph, intake, memory, surface
 from modules.checkpoint import ALWAYS_ASK_CONFIDENCE, ALWAYS_ASK_WEIGHT
 
 
@@ -166,6 +168,66 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORS (A-3) — Restrict to localhost only.
+# FastAPI defaults to allow-all origins; explicit restriction is required.
+# The "null" origin covers file:// local UIs (e.g. a local dashboard HTML).
+# ─────────────────────────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "null",  # file:// local UIs
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY HEADERS MIDDLEWARE (A-2)
+# Injected on every response. Protects against MIME sniffing, clickjacking,
+# and accidental token caching by intermediaries.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-XSS-Protection"] = "0"  # modern browsers ignore; 1 can be exploited
+    return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ERROR HELPER (A-1) — Opaque errors in production
+# In development mode, exception details are included to aid debugging.
+# In production, only a stable error code and a request ID are returned.
+# The full exception is always recorded to the permanent audit trail.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _safe_error(label: str, exc: Exception) -> str:
+    """
+    Build an error detail string safe for HTTP responses.
+    Development mode: includes exception type and message.
+    Production mode: opaque code + request ID only.
+    The full exception is always logged to the audit trail separately.
+    """
+    if not config.IS_PRODUCTION:
+        return f"{label}: {type(exc).__name__}: {exc}"
+    req_id = uuid.uuid4().hex[:8]
+    try:
+        memory.record(
+            event_type="PROCESSING_ERROR",
+            notes=f"[{req_id}] {label}: {type(exc).__name__}: {exc}",
+        )
+    except Exception:
+        pass
+    return f"processing_error (ref: {req_id})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -303,8 +365,91 @@ class AuditSummaryResponse(BaseModel):
     chain_intact: bool
     chain_total: int
     chain_gaps: int
- 
- 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPLIANCE RESPONSE MODELS (GAP-1, GAP-2, GAP-9)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DataExportResponse(BaseModel):
+    format_version: str
+    export_schema: str
+    generated_at: str
+    subject: str
+    classification_filter: int
+    record_count: int
+    records: List[dict]
+    graph_snapshot: Optional[dict] = None
+    compliance: dict
+
+
+class ErasureResponse(BaseModel):
+    erased: bool
+    nodes_deleted: int
+    edges_deleted: int
+    audit_event_id: Optional[int] = None
+    gdpr_article: str = "17"
+    timestamp: str
+
+
+class TransparencyResponse(BaseModel):
+    system: str
+    version: str
+    compliance_stage: str
+    data_controller: str
+    transparency_contact: str
+    active_rights: List[str]
+    known_limitations: List[str]
+    data_classifications_in_use: List[str]
+    eu_ai_act_articles_addressed: List[str]
+    gdpr_articles_addressed: List[str]
+    generated_at: str
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION DEPENDENCY
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _require_session(
+    authorization: Optional[str] = Header(None),
+) -> tuple:
+    """
+    FastAPI dependency that validates the Bearer token.
+    Returns (session_record, new_token_or_none).
+
+    The new token (from rotation) must be sent to the client
+    in the X-Session-Token response header. Clients must use
+    this token for all subsequent requests.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header required. Format: Bearer <token>",
+        )
+
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    session = session_manager.validate(raw_token)
+
+    if session is None:
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Session expired or invalid. "
+                "Authenticate again via POST /auth."
+            ),
+        )
+
+    # Rotate on every authenticated request — T-013 mitigation
+    new_token = session_manager.rotate(raw_token)
+    return session, new_token
+
+
+def _session_headers(new_token) -> Dict[str, str]:
+    """Build response headers containing the rotated session token."""
+    return {"X-Session-Token": str(new_token) if new_token else ""}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # EXPANDED AUDIT ENDPOINTS
 # Replace the existing get_audit() endpoint and add two new endpoints.
@@ -394,10 +539,7 @@ async def get_audit(
             order=order,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Audit query failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Audit query failed", exc))
  
     total = result["total"]
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
@@ -447,49 +589,6 @@ async def rate_limit_middleware(request: Request, call_next):
             content={"detail": reason},
         )
     return await call_next(request)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SESSION DEPENDENCY
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def _require_session(
-    authorization: Optional[str] = Header(None),
-) -> tuple:
-    """
-    FastAPI dependency that validates the Bearer token.
-    Returns (session_record, new_token_or_none).
-
-    The new token (from rotation) must be sent to the client
-    in the X-Session-Token response header. Clients must use
-    this token for all subsequent requests.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header required. Format: Bearer <token>",
-        )
-
-    raw_token = authorization.removeprefix("Bearer ").strip()
-    session = session_manager.validate(raw_token)
-
-    if session is None:
-        raise HTTPException(
-            status_code=401,
-            detail=(
-                "Session expired or invalid. "
-                "Authenticate again via POST /auth."
-            ),
-        )
-
-    # Rotate on every authenticated request — T-013 mitigation
-    new_token = session_manager.rotate(raw_token)
-    return session, new_token
-
-
-def _session_headers(new_token) -> Dict[str, str]:
-    """Build response headers containing the rotated session token."""
-    return {"X-Session-Token": str(new_token) if new_token else ""}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -593,7 +692,15 @@ async def authenticate(body: AuthRequest):
 
     identity = result.identity or body.identity
     token = session_manager.start(identity=identity)
+    memory.record(
+        event_type="AUTH_SUCCESS",
+        notes=f"Successful authentication. identity={identity}",
+    )
     result.clear_passphrase()
+    # A-6: Best-effort passphrase clearing from the Pydantic model.
+    # Python string immutability means the original string object can't
+    # be zeroed in memory, but we rebind the field to limit its lifetime.
+    body.passphrase = ""
 
     return AuthResponse(
         token=str(token),
@@ -664,10 +771,7 @@ async def process(
     try:
         package = intake.receive(body.input)
     except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Intake failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=422, detail=_safe_error("Intake failed", exc))
 
     if package.get("record_id"):
         record_ids.append(package["record_id"])
@@ -676,19 +780,13 @@ async def process(
     try:
         enriched = contextualize.build(package)
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Contextualize failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Contextualize failed", exc))
 
     # ── Step 3: NAVIGATE — surface ────────────────────────────────────────────
     try:
         surfaced = surface.present(enriched)
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Surface failed: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=_safe_error("Surface failed", exc))
 
     if surfaced.get("record_id"):
         record_ids.append(surfaced["record_id"])
@@ -839,12 +937,6 @@ async def process(
 
 
 @app.get(
-    "/audit",
-    response_model=AuditResponse,
-    tags=["Audit"],
-    summary="Read the permanent audit trail",
-)
-@app.get(
     "/audit/chain",
     response_model=AuditChainResponse,
     tags=["Audit"],
@@ -968,5 +1060,211 @@ async def logout(auth: tuple = Depends(_require_session)):
         content={
             "status": "logged_out",
             "identity": session.identity,
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATA SUBJECT RIGHTS — GDPR Art. 15, 17, 20 + EU AI Act Art. 13
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get(
+    "/data/export",
+    response_model=DataExportResponse,
+    tags=["Compliance"],
+    summary="GDPR Art. 15/20 — Export all personal data for the data subject",
+)
+async def data_export(
+    classification_min: int = 2,
+    include_graph: bool = False,
+    auth: tuple = Depends(_require_session),
+):
+    """
+    Right of Access (GDPR Article 15) and Right to Portability (GDPR Article 20).
+
+    Returns all audit trail records at or above the requested classification
+    level in a machine-readable JSON format. Optionally includes a snapshot of
+    the relationship graph (all nodes and edges derived from personal inputs).
+
+    A READ_ACCESS event is permanently recorded in the audit trail.
+
+    Query parameters:
+      classification_min  Minimum classification level. Default: 2 (personal data).
+                          Set to 0 to export all records (requires
+                          ONTO_COMPLIANCE_EXPORT_ALL=true in production).
+      include_graph       If true, include relationship graph snapshot (Art. 20).
+    """
+    _, new_token = auth
+
+    # In production, require ONTO_COMPLIANCE_EXPORT_ALL=true to export
+    # records below classification 2 (personal data threshold).
+    if config.IS_PRODUCTION and not config.COMPLIANCE_EXPORT_ALL_CLASSIFICATIONS:
+        classification_min = max(classification_min, 2)
+
+    try:
+        result = memory.export_personal_data(
+            classification_min=classification_min,
+            include_graph_snapshot=include_graph,
+            accessor_id="data_subject",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_error("data_export", exc),
+        )
+
+    memory.record(
+        event_type="DATA_EXPORT",
+        notes=(
+            f"GDPR Art. 15 data export. "
+            f"classification_min={classification_min}. "
+            f"include_graph={include_graph}."
+        ),
+        classification=classification_min,
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content=result,
+        headers=_session_headers(new_token),
+    )
+
+
+@app.delete(
+    "/data/erasure",
+    response_model=ErasureResponse,
+    tags=["Compliance"],
+    summary="GDPR Art. 17 — Delete the relationship graph (right to erasure)",
+)
+async def data_erasure(auth: tuple = Depends(_require_session)):
+    """
+    Right to Erasure (GDPR Article 17).
+
+    Deletes all nodes and edges from the relationship graph. The graph stores
+    personal associative data derived from inputs. Deletion is immediate.
+
+    The audit trail (memory.py) is NOT erased — it records only that erasure
+    occurred, not the content. This is consistent with the cryptographic erasure
+    architecture (append-only audit trail with encrypted payload; erasure =
+    payload key destruction for classified records).
+
+    Two audit events are permanently recorded:
+      - GRAPH_WIPE — written by graph.wipe() with node/edge counts
+      - ERASURE_REQUEST — written here, confirming the API invocation
+
+    The PPR cache is also invalidated. PPMI counters are reset.
+    """
+    _, new_token = auth
+
+    try:
+        wipe_result = graph.wipe()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_error("data_erasure_graph", exc),
+        )
+
+    # Record the API-level erasure request separately from the graph-level GRAPH_WIPE
+    erasure_event_id: Optional[int] = None
+    try:
+        erasure_event_id = memory.record(
+            event_type="ERASURE_REQUEST",
+            notes=(
+                "GDPR Art. 17 right-to-erasure invoked via DELETE /data/erasure. "
+                f"Graph cleared: {wipe_result.get('nodes_deleted', 0)} nodes, "
+                f"{wipe_result.get('edges_deleted', 0)} edges."
+            ),
+        )
+    except Exception:
+        pass  # Audit failure must not block a legitimate erasure
+
+    from datetime import datetime, timezone as _tz
+    return JSONResponse(
+        status_code=200,
+        content={
+            "erased": True,
+            "nodes_deleted": wipe_result.get("nodes_deleted", 0),
+            "edges_deleted": wipe_result.get("edges_deleted", 0),
+            "audit_event_id": erasure_event_id,
+            "gdpr_article": "17",
+            "timestamp": datetime.now(_tz.utc).isoformat(),
+        },
+        headers=_session_headers(new_token),
+    )
+
+
+@app.get(
+    "/system/transparency",
+    response_model=TransparencyResponse,
+    tags=["Compliance"],
+    summary="EU AI Act Art. 13 — System transparency and known limitations disclosure",
+)
+async def system_transparency():
+    """
+    Transparency disclosure for EU AI Act Article 13 (and GDPR Art. 13/14).
+
+    Returns factual information about this system: compliance stage, data
+    controller identity, known limitations, and which data subject rights
+    are active in this deployment.
+
+    This endpoint requires no authentication — it is a public disclosure.
+    """
+    from datetime import datetime, timezone as _tz
+
+    # Known limitations sourced from config so they can be overridden via
+    # ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS env var without code changes.
+    known_limitations = [
+        lim.strip()
+        for lim in config.COMPLIANCE_TRANSPARENCY_KNOWN_LIMITATIONS.split("|")
+        if lim.strip()
+    ]
+
+    memory.record(
+        event_type="TRANSPARENCY_READ",
+        notes="EU AI Act Art. 13 transparency disclosure accessed.",
+        classification=0,
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "system": "ONTO Ontological Context System",
+            "version": "1.0.0",
+            "compliance_stage": config.COMPLIANCE_STAGE,
+            "data_controller": config.COMPLIANCE_DATA_CONTROLLER,
+            "transparency_contact": config.COMPLIANCE_TRANSPARENCY_CONTACT,
+            "active_rights": [
+                "access (GDPR Art. 15) — GET /data/export",
+                "erasure (GDPR Art. 17) — DELETE /data/erasure",
+                "portability (GDPR Art. 20) — GET /data/export?include_graph=true",
+                "object to automated decision (GDPR Art. 22) — veto at checkpoint",
+            ],
+            "known_limitations": known_limitations,
+            "data_classifications_in_use": [
+                "0 — public (no sensitivity)",
+                "1 — internal (organizational sensitivity)",
+                "2 — personal (identifying information; read-logged)",
+                "3 — sensitive (health, financial, legal, biometric; read-logged)",
+                "4 — privileged (attorney-client, clinical, clergy)",
+                "5 — critical (existential risk if exposed)",
+            ],
+            "eu_ai_act_articles_addressed": [
+                "Art. 13 — transparency (this endpoint)",
+                "Art. 14(1) — bias disclosure (source diversity warning)",
+                "Art. 14(4)(b) — automation bias warning at every checkpoint",
+            ],
+            "gdpr_articles_addressed": [
+                "Art. 5 — data minimization (PPMI + concept cap)",
+                "Art. 6 — legal basis annotated in every intake record",
+                "Art. 13/14 — controller identity via this endpoint",
+                "Art. 15 — right of access via GET /data/export",
+                "Art. 17 — right to erasure via DELETE /data/erasure",
+                "Art. 20 — portability via GET /data/export?include_graph=true",
+                "Art. 22 — automated decision disclosure in audit records",
+                "Art. 25 — privacy by design (append-only, encrypted, classified)",
+                "Art. 30 — records of processing (full audit trail)",
+                "Art. 32 — security measures (AES-256-GCM, Argon2id, Merkle chain)",
+            ],
+            "generated_at": datetime.now(_tz.utc).isoformat(),
         },
     )

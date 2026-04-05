@@ -506,6 +506,142 @@ def query(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# EXPORT — GDPR DATA SUBJECT RIGHTS (Art. 15 + Art. 20)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def export_personal_data(
+    classification_min: int = 2,
+    include_graph_snapshot: bool = False,
+    accessor_id: str = "data_subject",
+) -> Dict[str, Any]:
+    """
+    Export all personal data records for a data subject.
+
+    GDPR Article 15 (Right of Access) — returns all records at or above
+    the requested classification level in a machine-readable format.
+    GDPR Article 20 (Right to Portability) — includes optional graph snapshot
+    of all derived relationship data.
+
+    A single READ_ACCESS audit event is written to record this bulk read.
+
+    Args:
+        classification_min:    Minimum classification level. Default: 2 (personal data).
+                               Set to 0 to export all records.
+        include_graph_snapshot: If True, include a snapshot of graph nodes and edges
+                               (derived personal data — portability, GDPR Art. 20).
+        accessor_id:           Identity of the requester, written to READ_ACCESS event.
+
+    Returns:
+        Dict with format_version, records, optional graph_snapshot, and compliance metadata.
+    """
+    # Internal fields not appropriate to export (integrity metadata, not personal data)
+    _EXCLUDE_FIELDS = {"chain_hash", "signature_algorithm"}
+
+    all_records: List[Dict[str, Any]] = []
+    offset = 0
+    page_limit = 500
+
+    # Paginate through all matching records
+    while True:
+        page = query(
+            classification_min=classification_min,
+            limit=page_limit,
+            offset=offset,
+            order="asc",
+        )
+        for r in page.get("records", []):
+            cleaned = {k: v for k, v in r.items() if k not in _EXCLUDE_FIELDS}
+            all_records.append(cleaned)
+        if offset + page_limit >= page.get("total", 0):
+            break
+        offset += page_limit
+
+    # Log this bulk read as a single READ_ACCESS event
+    max_class = max((r.get("classification", 0) for r in all_records), default=0)
+    log_read_access(
+        record_id=0,
+        accessor_id=accessor_id,
+        purpose="GDPR_Art15_data_export",
+        classification=max(max_class, classification_min),
+    )
+
+    snapshot = _export_graph_snapshot() if include_graph_snapshot else None
+
+    return {
+        "format_version": "1.0",
+        "export_schema": "ONTO-GDPR-Art15",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "subject": accessor_id,
+        "classification_filter": classification_min,
+        "record_count": len(all_records),
+        "records": all_records,
+        "graph_snapshot": snapshot,
+        "compliance": {
+            "gdpr_article": "15",
+            "right": "right_of_access",
+            "stage": "1",
+        },
+    }
+
+
+def _export_graph_snapshot() -> Dict[str, Any]:
+    """
+    Export a read-only snapshot of all graph nodes and edges.
+    Used by export_personal_data() when include_graph_snapshot=True.
+    Both graph and memory share the same SQLite database (DB_PATH).
+    """
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return {
+            "nodes": [],
+            "edges": [],
+            "node_count": 0,
+            "edge_count": 0,
+            "note": "graph_not_initialized",
+        }
+
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False, timeout=5)
+        conn.row_factory = sqlite3.Row
+        try:
+            nodes = [
+                dict(row) for row in conn.execute(
+                    "SELECT uuid, concept, weight, times_seen, is_sensitive, "
+                    "created_at, last_reinforced "
+                    "FROM graph_nodes "
+                    "WHERE (is_deleted = 0 OR is_deleted IS NULL) "
+                    "ORDER BY weight DESC"
+                ).fetchall()
+            ]
+            edges = [
+                dict(row) for row in conn.execute(
+                    "SELECT n1.concept AS source, n2.concept AS target, "
+                    "e.weight, e.times_seen, e.edge_type_id "
+                    "FROM graph_edges e "
+                    "JOIN graph_nodes n1 ON e.source_node_id = n1.id "
+                    "JOIN graph_nodes n2 ON e.target_node_id = n2.id "
+                    "WHERE (e.is_deleted = 0 OR e.is_deleted IS NULL)"
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+        }
+    except Exception:
+        return {
+            "nodes": [],
+            "edges": [],
+            "node_count": 0,
+            "edge_count": 0,
+            "note": "graph_read_error",
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SUMMARIZE — AGGREGATE STATISTICS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -602,6 +738,27 @@ def summarize() -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 # CHAIN VERIFICATION (C2)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def get_genesis_hash() -> Optional[str]:
+    """
+    C-2 — T-001 Genesis Block Poisoning mitigation helper.
+
+    Returns the SHA-256 hash of the first (genesis) audit record.
+    Publish this value immediately after the first session to an external
+    location (e.g. a public Gist). Anyone can then run verify_chain()
+    and compare its first_record_hash against the published value to confirm
+    the audit trail has not been retroactively poisoned.
+
+    Returns None if the database has no records yet.
+
+    Usage:
+        python3 -m modules.memory genesis
+    """
+    records = read_all()
+    if not records:
+        return None
+    return _hash_record_content(records[0])
+
 
 def verify_chain() -> Dict[str, Any]:
     """
@@ -738,3 +895,26 @@ def _hash_record_content(record_dict: Dict[str, Any]) -> str:
     }, sort_keys=True, default=str)
 
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI — python3 -m modules.memory genesis
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys as _sys
+    if len(_sys.argv) > 1 and _sys.argv[1] == "genesis":
+        initialize()
+        h = get_genesis_hash()
+        if h is None:
+            print("No records found. Run the system at least once first.")
+            _sys.exit(1)
+        print("\n  ONTO — Genesis Block Hash")
+        print("  ─" * 30)
+        print(f"\n  {h}\n")
+        print("  Publish this hash to an external, independently verifiable")
+        print("  location (e.g. a public Gist) to anchor your audit trail.")
+        print("  Anyone can verify it with: python3 -m modules.memory genesis")
+        print("  and compare against your published value.\n")
+    else:
+        print("Usage: python3 -m modules.memory genesis")

@@ -33,6 +33,10 @@ class ONTOConfig:
     Production deployments should override defaults via environment.
     """
 
+    def __init__(self) -> None:
+        # Override slots — used by tests; None means "use env var".
+        self._is_production_override = None  # type: Optional[bool]
+
     # ─────────────────────────────────────────────────────────────────────────
     # RATE LIMITING (item 2.05)
     # ─────────────────────────────────────────────────────────────────────────
@@ -159,7 +163,14 @@ class ONTOConfig:
     @property
     def IS_PRODUCTION(self) -> bool:
         """True if running in production environment."""
+        if self._is_production_override is not None:
+            return self._is_production_override
         return self.ENVIRONMENT == "production"
+
+    @IS_PRODUCTION.setter
+    def IS_PRODUCTION(self, value: bool) -> None:
+        """Allow tests to override the production flag without env var changes."""
+        self._is_production_override = bool(value)
 
     # ─────────────────────────────────────────────────────────────────────────
     # SAFE MESSAGING (item C4 — REVIEW_001)
@@ -211,7 +222,23 @@ class ONTOConfig:
             "  Your judgment matters more than anything this system says.\n"
             "  ─────────────────────────────────────────────────────\n"
         )
-        return os.environ.get("ONTO_CRISIS_RESPONSE_TEXT", default)
+        override = os.environ.get("ONTO_CRISIS_RESPONSE_TEXT", "")
+        if override:
+            # A-7: Validate that the override still contains at least one
+            # recognizable crisis resource. A malicious or misconfigured
+            # deployment must not replace safe-messaging text with harmful
+            # content. If validation fails, log and use the safe default.
+            _crisis_markers = ("988", "741741", "crisis", "helpline", "samaritans")
+            if any(m in override.lower() for m in _crisis_markers):
+                return override
+            import sys as _sys
+            print(
+                "[ONTO WARNING] ONTO_CRISIS_RESPONSE_TEXT override did not "
+                "contain a recognizable crisis resource reference. "
+                "Falling back to safe default.",
+                file=_sys.stderr,
+            )
+        return default
 
     @property
     def CRISIS_RESOURCES_BRIEF(self) -> str:
@@ -283,6 +310,97 @@ class ONTOConfig:
             return 28800
 
     # ─────────────────────────────────────────────────────────────────────────
+    # COMPLIANCE
+    # Configurable compliance posture. All Stage 1 defaults are safe for
+    # single-operator local use. Override via environment for deployment.
+    # Stage 2 will expand these with consent ledger and RBAC integration.
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def COMPLIANCE_STAGE(self) -> str:
+        """
+        Deployment compliance stage. Machine-readable marker.
+        Default: "1" (single-user, local).
+        Stage 2 = multi-user with consent ledger and RBAC.
+        Set ONTO_COMPLIANCE_STAGE to override.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_STAGE", "1")
+
+    @property
+    def COMPLIANCE_LEGAL_BASIS_DEFAULT(self) -> str:
+        """
+        GDPR Article 6 legal basis annotated in every INTAKE audit record.
+        Default: "legitimate_interest_single_operator" (Stage 1, operator = subject).
+        Set ONTO_COMPLIANCE_LEGAL_BASIS to override.
+        Valid values: legitimate_interest_single_operator | consent |
+                      contract | legal_obligation
+        Stage 2: replaced by per-request consent ledger lookup.
+        """
+        return os.environ.get(
+            "ONTO_COMPLIANCE_LEGAL_BASIS",
+            "legitimate_interest_single_operator",
+        )
+
+    @property
+    def COMPLIANCE_DATA_CONTROLLER(self) -> str:
+        """
+        GDPR Article 13/14 data controller identity.
+        Returned by GET /system/transparency.
+        Default: "local_operator".
+        Set ONTO_COMPLIANCE_DATA_CONTROLLER to the name of the deploying entity.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_DATA_CONTROLLER", "local_operator")
+
+    @property
+    def COMPLIANCE_TRANSPARENCY_CONTACT(self) -> str:
+        """
+        Data subject rights contact point (GDPR Art. 13/14).
+        Returned by GET /system/transparency.
+        Default: "" (empty = self-service; operator = subject in Stage 1).
+        Set ONTO_COMPLIANCE_TRANSPARENCY_CONTACT for multi-user deployments.
+        """
+        return os.environ.get("ONTO_COMPLIANCE_TRANSPARENCY_CONTACT", "")
+
+    @property
+    def COMPLIANCE_EXPORT_ALL_CLASSIFICATIONS(self) -> bool:
+        """
+        If True, GET /data/export includes all records regardless of
+        classification level. If False (default), only records with
+        classification >= 2 (personal data) are included.
+        Set ONTO_COMPLIANCE_EXPORT_ALL=true to override.
+        Stage 2: replaced by per-requester RBAC authorization level.
+        """
+        value = os.environ.get("ONTO_COMPLIANCE_EXPORT_ALL", "false")
+        return value.lower() in ("true", "1", "yes")
+
+    @property
+    def COMPLIANCE_TRANSPARENCY_KNOWN_LIMITATIONS(self) -> str:
+        """
+        Pipe-delimited list of known system limitations for GET /system/transparency.
+        Operators may add deployment-specific caveats without a code change.
+        Default: hardcoded list describing Stage 1 heuristic constraints.
+        Set ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS to override or extend.
+
+        EU AI Act Art. 13(1)(b) — providers must disclose known limitations.
+
+        Format: "limitation one|limitation two|limitation three"
+        Each item is trimmed and returned as a separate string in the response.
+        """
+        default = (
+            "Classification is keyword-heuristic only — not ML-based at Stage 1."
+            "|CRISIS detection is keyword-based — not a clinical assessment tool."
+            "|Graph relationships are derived from inputs, not verified ground truth."
+            "|Consent ledger is not yet active — deferred to Stage 2."
+            "|Single-user deployment only — no RBAC at Stage 1."
+            "|Right to correct is not supported (append-only audit trail)."
+            "|Bias monitoring is designed but not yet implemented (Stage 2)."
+            "|Field-level encryption for HIPAA PHI is deferred to Stage 2."
+        )
+        return os.environ.get("ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS", default)
+
+    # STAGE-2: add COMPLIANCE_CONSENT_LEDGER_URL property (reserved, empty default)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # SUMMARY
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -311,6 +429,13 @@ class ONTOConfig:
             ),
             f"Session idle timeout: {self.SESSION_IDLE_TIMEOUT_SECONDS}s",
             f"Session max duration: {self.SESSION_MAX_DURATION_SECONDS}s",
+            f"Compliance stage:     {self.COMPLIANCE_STAGE}",
+            f"Legal basis default:  {self.COMPLIANCE_LEGAL_BASIS_DEFAULT}",
+            f"Data controller:      {self.COMPLIANCE_DATA_CONTROLLER}",
+            (
+                "Transparency contact: "
+                f"{'SET' if self.COMPLIANCE_TRANSPARENCY_CONTACT else 'not set'}"
+            ),
             "─" * 40,
         ]
         if not self.IS_PRODUCTION:

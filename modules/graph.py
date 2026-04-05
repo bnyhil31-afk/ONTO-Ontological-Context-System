@@ -232,6 +232,9 @@ def set_extractor(extractor: ConceptExtractor) -> None:
     Swap the active concept extractor. Thread-safe.
     Change is written to audit trail.
     Called by tests (MockExtractor) and Phase 4 boot (SpacyExtractor).
+
+    B-4: The extractor reference is copied under _extractor_lock so that
+    a swap mid-extraction cannot cause a partially-swapped state.
     """
     global _EXTRACTOR
     with _extractor_lock:
@@ -246,8 +249,10 @@ def set_extractor(extractor: ConceptExtractor) -> None:
             ),
             context={"from": old_name, "to": extractor.get_model_name()},
         )
-    except Exception:
-        pass
+    except Exception as _exc:
+        # A-8: Extractor swap audit failure is a security event.
+        import sys as _sys
+        print(f"[ONTO] EXTRACTOR_SWAP_AUDIT_FAIL: {_exc}", file=_sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +274,12 @@ def _get_conn() -> sqlite3.Connection:
     """
     Open a connection to the shared ONTO database.
     WAL mode: safe for concurrent readers + one serialised writer.
+
+    B-3 — Threading discipline: check_same_thread=False disables Python's
+    built-in guard. All callers MUST hold _lock (the module RLock) before
+    using any connection returned by this function. Never store the returned
+    connection across lock boundaries — obtain it, use it, close it, all
+    within the same _lock acquisition.
     """
     conn = sqlite3.connect(
         _memory.DB_PATH, check_same_thread=False, timeout=10
@@ -1228,6 +1239,37 @@ def relate(package: Dict[str, Any]) -> Dict[str, Any]:
                     if edge_is_sensitive
                     else BASE_REINFORCEMENT
                 )
+
+                # C-1 / T-009: Per-source edge weight cap.
+                # If a single source (provenance_id) already accounts for
+                # >40% of the total edge weight on this concept pair,
+                # cap new reinforcement to SENSITIVE_REINFORCEMENT to prevent
+                # context flooding by a single high-volume source.
+                if not edge_is_sensitive and provenance_id:
+                    try:
+                        src_weight = conn.execute(
+                            """
+                            SELECT COALESCE(SUM(e.weight), 0)
+                            FROM edges e
+                            JOIN edge_provenance ep ON ep.edge_id = e.id
+                            WHERE e.source_id = ? AND e.target_id = ?
+                              AND ep.provenance_id = ?
+                            """,
+                            (src_id, tgt_id, provenance_id),
+                        ).fetchone()[0]
+                        total_weight = conn.execute(
+                            """
+                            SELECT COALESCE(SUM(weight), 0)
+                            FROM edges
+                            WHERE source_id = ? AND target_id = ?
+                            """,
+                            (src_id, tgt_id),
+                        ).fetchone()[0]
+                        if total_weight > 0 and (src_weight / total_weight) > 0.40:
+                            reinforcement = SENSITIVE_REINFORCEMENT
+                    except Exception:
+                        pass  # on failure, use default reinforcement
+
                 created = _upsert_edge(
                     conn,
                     src_id,

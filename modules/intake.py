@@ -84,7 +84,8 @@ _CRISIS_INDIRECT = [
     r"\bwhat'?s\s+the\s+point\b",
     r"\bcan'?t\s+see\s+a\s+way\s+(forward|out|through)\b",
     r"\bgive\s+up\s+on\s+(everything|life|myself)\b",
-    r"\bfeeling\s+(hopeless|worthless|like\s+a\s+burden)\b",
+    r"\bfeeling\s+(?:\w+\s+)?(hopeless|worthless)\b",
+    r"\blike\s+a\s+burden\b",
     r"\bmiss\s+me\s+when\s+i'?m\s+gone\b",
 ]
 
@@ -195,6 +196,12 @@ def receive(raw_input: str) -> Dict[str, Any]:
     complexity = _assess_complexity(clean, word_count)
     input_type = _classify_input_type(clean)
 
+    # GAP-5: GDPR Art. 6 — annotate legal basis in every intake record.
+    # At Stage 1 (single operator = subject), legitimate interest applies.
+    # STAGE-2: replace config lookup with consent_ledger.get_active_basis(identity)
+    from core.config import config as _config
+    legal_basis = _config.COMPLIANCE_LEGAL_BASIS_DEFAULT
+
     # Step 5 — Record and return
     # Store context dict so downstream modules can read sanitization state
     record_id = memory.record(
@@ -207,14 +214,21 @@ def receive(raw_input: str) -> Dict[str, Any]:
             "complexity": complexity,
             "classification": classification,
             "word_count": word_count,
+            "legal_basis": legal_basis,
         },
-        notes=f"source:human | complexity:{complexity} | type:{input_type}",
+        notes=(
+            f"source:human | complexity:{complexity} | type:{input_type}"
+            f" | legal_basis:{legal_basis}"
+        ),
         classification=classification
     )
 
+    # A-9: Never allow downstream modules to fall back to raw unsanitized input.
+    # If sanitization produces an empty string, "clean" is "" (not raw).
+    # Downstream callers must use package["clean"] exclusively.
     return {
-        "raw": raw_input,
-        "clean": clean,
+        "raw": raw_input,          # preserved for audit; NOT for processing
+        "clean": clean,            # always use this for processing
         "input_type": input_type,
         "source": "human",
         "word_count": word_count,
@@ -225,6 +239,7 @@ def receive(raw_input: str) -> Dict[str, Any]:
         "record_id": record_id,
         "classification": classification,  # C3 — propagates forward
         "classification_basis": "auto-detected",
+        "legal_basis": legal_basis,        # GDPR Art. 6 — propagates forward
     }
 
 
@@ -377,8 +392,10 @@ def _sanitize(text: str) -> tuple:
     # Normalize Unicode (NFC form)
     clean = unicodedata.normalize("NFC", clean)
 
-    # Normalize whitespace — collapse multiple spaces/tabs
-    clean = re.sub(r"[ \t]+", " ", clean).strip()
+    # Normalize whitespace — collapse runs of spaces or tabs independently
+    clean = re.sub(r" {2,}", " ", clean)      # multiple spaces → one space
+    clean = re.sub(r"\t{2,}", "\t", clean)    # multiple tabs   → one tab
+    clean = clean.strip()
     # Collapse multiple consecutive newlines to maximum two
     clean = re.sub(r"\n{3,}", "\n\n", clean)
 
