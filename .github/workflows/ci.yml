@@ -93,7 +93,7 @@ jobs:
         # well-reviewed codebase). Findings cause the step to fail, blocking merge.
       - name: Generate SBOM (CycloneDX)
         run: |
-          cyclonedx-py environment -o sbom-py${{ matrix.python-version }}.json --format json
+          cyclonedx-py environment -o sbom-py${{ matrix.python-version }}.json --of JSON
         # Produces a CycloneDX JSON SBOM satisfying NTIA minimum elements.
         # Uploaded as a CI artifact for supply chain auditing.
       - name: Upload SBOM artifact
