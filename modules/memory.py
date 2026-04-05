@@ -566,7 +566,8 @@ def export_personal_data(
         accessor_id:           Identity of the requester, written to READ_ACCESS event.
 
     Returns:
-        Dict with format_version, records, optional graph_snapshot, and compliance metadata.
+        Dict with format_version, records, optional graph_snapshot,
+        and compliance metadata.
     """
     # Internal fields not appropriate to export (integrity metadata, not personal data)
     _EXCLUDE_FIELDS = {"chain_hash", "signature_algorithm"}
