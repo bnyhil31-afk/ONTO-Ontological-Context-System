@@ -937,12 +937,6 @@ async def process(
 
 
 @app.get(
-    "/audit",
-    response_model=AuditResponse,
-    tags=["Audit"],
-    summary="Read the permanent audit trail",
-)
-@app.get(
     "/audit/chain",
     response_model=AuditChainResponse,
     tags=["Audit"],
