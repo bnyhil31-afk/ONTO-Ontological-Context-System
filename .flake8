@@ -4,8 +4,10 @@
 # Run with: flake8 .
 
 # Maximum line length
-# 88 characters — matches Black formatter standard
-max-line-length = 88
+# 120 characters — relaxed from Black's 88 to accommodate embedded SQL strings
+# and detailed docstrings. SQL trigger RAISE messages with deep indentation
+# naturally exceed 88 chars and cannot be split without harming readability.
+max-line-length = 120
 
 # Files and directories to ignore
 exclude =

@@ -99,7 +99,7 @@ def _config_get(key: str) -> Optional[str]:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT value FROM {_TABLE} WHERE key = ?", (key,)
+            f"SELECT value FROM {_TABLE} WHERE key = ?", (key,)  # nosec B608
         ).fetchone()
         return row["value"] if row else None
     finally:

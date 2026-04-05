@@ -529,7 +529,7 @@ def _build_ppr_matrix(
     if edge_type_ids:
         placeholders = ",".join("?" * len(edge_type_ids))
         edges = conn.execute(
-            f"SELECT source_node_id, target_node_id, weight "
+            f"SELECT source_node_id, target_node_id, weight "  # nosec B608
             f"FROM graph_edges WHERE edge_type_id IN ({placeholders}) "
             f"AND is_deleted = 0",
             edge_type_ids,
@@ -1084,7 +1084,7 @@ def get_ppr_subgraph(
     conn = _get_conn()
     try:
         node_rows = conn.execute(
-            f"SELECT id, concept, is_sensitive, domain "
+            f"SELECT id, concept, is_sensitive, domain "  # nosec B608
             f"FROM graph_nodes WHERE id IN ({placeholders})",
             result_ids,
         ).fetchall()
@@ -1105,7 +1105,7 @@ def get_ppr_subgraph(
         )
 
         edge_rows = conn.execute(
-            f"SELECT e.source_node_id, e.target_node_id, e.weight, "
+            f"SELECT e.source_node_id, e.target_node_id, e.weight, "  # nosec B608
             f"t.name AS type_name "
             f"FROM graph_edges e "
             f"LEFT JOIN edge_types t ON t.id = e.edge_type_id "

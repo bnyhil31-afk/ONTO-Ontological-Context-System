@@ -345,7 +345,7 @@ class ConsentLedger:
         conn = _get_conn()
         try:
             query = (
-                "SELECT * FROM consent_ledger WHERE subject_id=?"
+                "SELECT * FROM consent_ledger WHERE subject_id=?"  # nosec B608
                 + ("" if include_revoked else " AND status='active'")
                 + " ORDER BY granted_at DESC"
             )

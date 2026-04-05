@@ -85,7 +85,7 @@ jobs:
           pytest tests/ -v --tb=short
       - name: Run linter
         run: |
-          flake8 modules/ --max-line-length=88 --extend-ignore=E203,W503,E302
+          flake8 modules/ --extend-ignore=E203,W503,E302
       - name: SAST — bandit (MEDIUM+ severity)
         run: |
           bandit -r core/ modules/ api/ -ll --exclude tests/ --format txt
@@ -93,7 +93,7 @@ jobs:
         # well-reviewed codebase). Findings cause the step to fail, blocking merge.
       - name: Generate SBOM (CycloneDX)
         run: |
-          cyclonedx-py environment -o sbom-py${{ matrix.python-version }}.json --format json
+          cyclonedx-py environment -o sbom-py${{ matrix.python-version }}.json --of JSON
         # Produces a CycloneDX JSON SBOM satisfying NTIA minimum elements.
         # Uploaded as a CI artifact for supply chain auditing.
       - name: Upload SBOM artifact

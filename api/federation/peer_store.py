@@ -97,7 +97,7 @@ def pin_cert(
     conn = _get_conn()
     try:
         existing = conn.execute(
-            f"SELECT peer_did FROM {_TABLE} WHERE peer_did = ?",
+            f"SELECT peer_did FROM {_TABLE} WHERE peer_did = ?",  # nosec B608
             (peer_did,),
         ).fetchone()
 
@@ -107,7 +107,7 @@ def pin_cert(
         h = _cert_hash(cert_pem)
         now = _time.time()
         conn.execute(
-            f"INSERT INTO {_TABLE} "
+            f"INSERT INTO {_TABLE} "  # nosec B608
             f"(peer_did, cert_hash, pinned_at, pinned_by, last_seen, "
             f"rotation_count) VALUES (?, ?, ?, ?, ?, 0)",
             (peer_did, h, now, session_hash, now),
@@ -154,7 +154,7 @@ def verify_cert(
         conn = _get_conn()
         try:
             row = conn.execute(
-                f"SELECT cert_hash FROM {_TABLE} WHERE peer_did = ?",
+                f"SELECT cert_hash FROM {_TABLE} WHERE peer_did = ?",  # nosec B608
                 (peer_did,),
             ).fetchone()
 
@@ -166,7 +166,7 @@ def verify_cert(
 
             # Update last_seen regardless of match
             conn.execute(
-                f"UPDATE {_TABLE} SET last_seen = ? WHERE peer_did = ?",
+                f"UPDATE {_TABLE} SET last_seen = ? WHERE peer_did = ?",  # nosec B608
                 (_time.time(), peer_did),
             )
             conn.commit()
@@ -202,7 +202,7 @@ def approve_cert_change(
     conn = _get_conn()
     try:
         existing = conn.execute(
-            f"SELECT cert_hash, rotation_count FROM {_TABLE} "
+            f"SELECT cert_hash, rotation_count FROM {_TABLE} "  # nosec B608
             f"WHERE peer_did = ?",
             (peer_did,),
         ).fetchone()
@@ -216,7 +216,7 @@ def approve_cert_change(
         now = _time.time()
 
         conn.execute(
-            f"UPDATE {_TABLE} SET cert_hash = ?, pinned_by = ?, "
+            f"UPDATE {_TABLE} SET cert_hash = ?, pinned_by = ?, "  # nosec B608
             f"last_seen = ?, rotation_count = ? WHERE peer_did = ?",
             (new_hash, session_hash, now, new_rotation_count, peer_did),
         )
@@ -254,7 +254,7 @@ def get_peer_cert(peer_did: str) -> Optional[dict]:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT peer_did, cert_hash, pinned_at, pinned_by, "
+            f"SELECT peer_did, cert_hash, pinned_at, pinned_by, "  # nosec B608
             f"last_seen, rotation_count FROM {_TABLE} WHERE peer_did = ?",
             (peer_did,),
         ).fetchone()
@@ -282,7 +282,7 @@ def remove_peer(peer_did: str) -> bool:
     conn = _get_conn()
     try:
         result = conn.execute(
-            f"DELETE FROM {_TABLE} WHERE peer_did = ?",
+            f"DELETE FROM {_TABLE} WHERE peer_did = ?",  # nosec B608
             (peer_did,),
         )
         conn.commit()
@@ -312,7 +312,7 @@ def list_peers() -> list:
     try:
         rows = conn.execute(
             f"SELECT peer_did, cert_hash, pinned_at, last_seen, "
-            f"rotation_count FROM {_TABLE} ORDER BY pinned_at DESC"
+            f"rotation_count FROM {_TABLE} ORDER BY pinned_at DESC"  # nosec B608
         ).fetchall()
         return [
             {

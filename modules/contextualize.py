@@ -20,7 +20,6 @@ Anti-echo-chamber design:
 Rule 1.09A: Code, tests, and documentation must always agree.
 """
 
-import os
 from typing import Any, Dict, List
 
 from modules import memory

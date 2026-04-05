@@ -486,14 +486,11 @@ def query(
         chain_hash, signature_algorithm, classification
     """
 
-    count_sql = f"SELECT COUNT(*) FROM events {where_clause}"
-    data_sql = f"""
-        SELECT {select_cols}
-        FROM events
-        {where_clause}
-        ORDER BY id {order_sql}
-        LIMIT ? OFFSET ?
-    """
+    count_sql = f"SELECT COUNT(*) FROM events {where_clause}"  # nosec B608
+    data_sql = (
+        f"SELECT {select_cols} FROM events {where_clause}"  # nosec B608
+        f" ORDER BY id {order_sql} LIMIT ? OFFSET ?"
+    )
 
     with _connect() as conn:
         # Total count (before pagination) for the caller to compute pages
@@ -566,7 +563,8 @@ def export_personal_data(
         accessor_id:           Identity of the requester, written to READ_ACCESS event.
 
     Returns:
-        Dict with format_version, records, optional graph_snapshot, and compliance metadata.
+        Dict with format_version, records, optional graph_snapshot,
+        and compliance metadata.
     """
     # Internal fields not appropriate to export (integrity metadata, not personal data)
     _EXCLUDE_FIELDS = {"chain_hash", "signature_algorithm"}

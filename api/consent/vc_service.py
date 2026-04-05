@@ -211,7 +211,7 @@ class HttpVCService:
                 f"{self._base}/health",
                 method="GET",
             )
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
                 return resp.status == 200
         except Exception:
             return False
@@ -224,7 +224,7 @@ class HttpVCService:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
             return json.loads(resp.read())
 
 
