@@ -100,14 +100,48 @@ def initialize() -> bool:
                 );
             END
         """)
+        # The prevent_update trigger guards the fields that form the
+        # integrity spine of the audit trail (id, timestamp, chain_hash,
+        # signature_algorithm, classification). Payload fields (input,
+        # context, output, notes) may be nullified by prune_payload_by_age()
+        # as part of the GDPR right-to-erasure implementation — see
+        # docs/PRIVACY_GDPR.md for the legal basis (GDPR Recital 49 +
+        # EDPB guidance on cryptographic erasure).
         conn.execute("""
             CREATE TRIGGER IF NOT EXISTS prevent_update
             BEFORE UPDATE ON events
             BEGIN
-                SELECT RAISE(
-                    ABORT,
-                    'Records cannot be changed. Memory is permanent.'
-                );
+                SELECT CASE
+                    -- Spine fields: immutable under all circumstances
+                    WHEN NEW.id != OLD.id
+                        THEN RAISE(ABORT, 'Record id cannot be changed. Memory is permanent.')
+                    WHEN NEW.timestamp != OLD.timestamp
+                        THEN RAISE(ABORT, 'Record timestamp cannot be changed. Memory is permanent.')
+                    WHEN NEW.chain_hash != OLD.chain_hash
+                         AND OLD.chain_hash IS NOT NULL
+                        THEN RAISE(ABORT, 'Record chain_hash cannot be changed. Memory is permanent.')
+                    WHEN NEW.signature_algorithm != OLD.signature_algorithm
+                        THEN RAISE(ABORT, 'Record signature_algorithm cannot be changed. Memory is permanent.')
+                    WHEN NEW.classification != OLD.classification
+                        THEN RAISE(ABORT, 'Record classification cannot be changed. Memory is permanent.')
+                    WHEN NEW.event_type != OLD.event_type
+                        THEN RAISE(ABORT, 'Record event_type cannot be changed. Memory is permanent.')
+                    -- Payload fields: may be set to NULL (GDPR pruning) but
+                    -- not replaced with a different non-NULL value.
+                    WHEN NEW.input IS NOT NULL AND NEW.input != OLD.input
+                        THEN RAISE(ABORT, 'Record input cannot be changed. Memory is permanent.')
+                    WHEN NEW.context IS NOT NULL AND NEW.context != OLD.context
+                        THEN RAISE(ABORT, 'Record context cannot be changed. Memory is permanent.')
+                    WHEN NEW.output IS NOT NULL AND NEW.output != OLD.output
+                        THEN RAISE(ABORT, 'Record output cannot be changed. Memory is permanent.')
+                    WHEN NEW.notes IS NOT NULL AND NEW.notes != OLD.notes
+                        THEN RAISE(ABORT, 'Record notes cannot be changed. Memory is permanent.')
+                    WHEN NEW.human_decision IS NOT NULL
+                         AND NEW.human_decision != OLD.human_decision
+                        THEN RAISE(ABORT, 'Record human_decision cannot be changed. Memory is permanent.')
+                    WHEN NEW.confidence IS NOT NULL AND NEW.confidence != OLD.confidence
+                        THEN RAISE(ABORT, 'Record confidence cannot be changed. Memory is permanent.')
+                END;
             END
         """)
 
@@ -768,15 +802,25 @@ def verify_chain() -> Dict[str, Any]:
     from the previous record's content, and comparing it to the stored
     chain_hash. Any gap, deletion, or modification breaks the chain.
 
+    Pruned records: records whose payload fields (input, context, output,
+    notes) have been nullified by prune_payload_by_age() retain their
+    chain_hash. These records are marked pruned=True in the gap_detail
+    list and do NOT count as chain breaks — the hash covers the original
+    content; it is simply no longer recomputable from the nullified payload.
+
     Returns:
         Dict with keys:
-          intact (bool): True if chain is unbroken
+          intact (bool): True if chain is unbroken (pruned records do not
+                         affect this flag)
           total (int): Total records checked
-          gaps (list): List of record IDs where chain breaks
+          gaps (list): List of dicts for records where chain breaks
+                       (tampered or deleted, NOT including pruned records)
+          pruned (int): Number of records identified as payload-pruned
           first_record_hash (str): Hash of the genesis record (publish this)
     """
     records = read_all()
     gaps = []
+    pruned_count = 0
     prev_hash = None
 
     for idx, r in enumerate(records):
@@ -795,10 +839,29 @@ def verify_chain() -> Dict[str, Any]:
             continue
 
         if stored != prev_hash:
+            # Distinguish pruned records from tampered records.
+            # A pruned record has chain_hash present but all payload fields
+            # null. Its chain_hash was written when the full content existed,
+            # so the mismatch is expected and benign.
+            _payload_fields = (
+                r.get("input"),
+                r.get("context"),
+                r.get("output"),
+                r.get("notes"),
+            )
+            if stored is not None and all(f is None for f in _payload_fields):
+                # Payload-pruned record — not a tampering gap.
+                pruned_count += 1
+                # Use the stored hash as prev_hash so the next record can
+                # verify against it normally.
+                prev_hash = stored
+                continue
+
             gaps.append({
                 "record_id": r["id"],
                 "expected": prev_hash,
-                "stored": stored
+                "stored": stored,
+                "pruned": False,
             })
 
         prev_hash = _hash_record_content(r)
@@ -809,8 +872,163 @@ def verify_chain() -> Dict[str, Any]:
         "intact": len(gaps) == 0,
         "total": len(records),
         "gaps": gaps,
-        "first_record_hash": first_hash
+        "pruned": pruned_count,
+        "first_record_hash": first_hash,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIGHTWEIGHT CHAIN TAIL VERIFICATION
+# Fast integrity check used by GET /health. Verifies only the last n records
+# rather than walking the full history, so health probes are cheap.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def verify_chain_tail(n: int = 2) -> Dict[str, Any]:
+    """
+    Verify the Merkle chain integrity of the most recent `n` records only.
+
+    This is a fast, lightweight version of verify_chain() designed for use
+    by the /health endpoint where probing the full chain on every request
+    would be too expensive.
+
+    Returns:
+        Dict with keys:
+          intact (bool): True if the tail of the chain is unbroken.
+          checked (int): Number of records actually checked (may be < n if
+                         the database has fewer records).
+          gaps (list): Any gaps found in the tail segment.
+
+    If the database is empty or has only one record, returns intact=True.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, timestamp, event_type, input, context,
+                   output, confidence, human_decision, notes,
+                   chain_hash, signature_algorithm, classification
+            FROM events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (n,),
+        ).fetchall()
+
+    records = [_row_to_dict(row) for row in reversed(rows)]
+
+    if len(records) < 2:
+        return {"intact": True, "checked": len(records), "gaps": []}
+
+    gaps = []
+    for i in range(1, len(records)):
+        prev = records[i - 1]
+        curr = records[i]
+        expected = _hash_record_content(prev)
+        stored = curr.get("chain_hash")
+        if stored is None and expected is None:
+            continue  # pre-chain records
+        if stored != expected:
+            # Check if pruned (same heuristic as verify_chain)
+            _payload_fields = (
+                curr.get("input"),
+                curr.get("context"),
+                curr.get("output"),
+                curr.get("notes"),
+            )
+            if stored is not None and all(f is None for f in _payload_fields):
+                continue  # pruned — not a gap
+            gaps.append({
+                "record_id": curr["id"],
+                "expected": expected,
+                "stored": stored,
+            })
+
+    return {
+        "intact": len(gaps) == 0,
+        "checked": len(records),
+        "gaps": gaps,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATA RETENTION — PAYLOAD PRUNING (GDPR Art. 17 / right to erasure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def prune_payload_by_age(days: int) -> int:
+    """
+    Implement GDPR right-to-erasure via payload cryptographic erasure.
+
+    Nullifies the personal-content fields (input, context, output, notes)
+    of all records older than `days` days. The audit shell —
+    (id, timestamp, event_type, classification, chain_hash) — is
+    preserved so the Merkle chain proof remains verifiable.
+
+    This approach is aligned with GDPR Recital 49 (security requirement
+    justifying append-only design) and EDPB guidance that cryptographic
+    erasure of payload data satisfies Art. 17 where deletion is technically
+    impossible without destroying integrity proofs.
+
+    After pruning, verify_chain() marks affected records as pruned=True
+    rather than reporting a chain gap — the chain hash is still present
+    and covers the original content; it is simply no longer recomputable
+    from the nullified payload.
+
+    Arguments:
+        days: Records older than this many days have their payload nullified.
+              Pass 0 to prune all records (useful for testing).
+              Must be >= 0.
+
+    Returns:
+        int: Number of records pruned.
+
+    Raises:
+        ValueError: If days < 0.
+    """
+    if days < 0:
+        raise ValueError(f"days must be >= 0, got {days}")
+
+    cutoff = (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+    )
+    if days > 0:
+        from datetime import timedelta
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = cutoff_dt.replace(microsecond=0).isoformat()
+
+    with _connect() as conn:
+        # Only prune records that still have payload content — skip already-pruned.
+        cursor = conn.execute(
+            """
+            UPDATE events
+            SET input   = NULL,
+                context = NULL,
+                output  = NULL,
+                notes   = NULL
+            WHERE timestamp < ?
+              AND (input IS NOT NULL
+                   OR context IS NOT NULL
+                   OR output IS NOT NULL
+                   OR notes IS NOT NULL)
+            """,
+            (cutoff,),
+        )
+        pruned_count = cursor.rowcount
+
+    if pruned_count > 0:
+        # Record the pruning event itself so operators can see when and how
+        # many records were pruned. This event has no sensitive payload.
+        record(
+            event_type="RETENTION_PRUNED",
+            notes=(
+                f"Payload pruning completed. "
+                f"{pruned_count} record(s) older than {days} day(s) pruned. "
+                f"Cutoff timestamp: {cutoff}. "
+                f"Audit shells (id, timestamp, chain_hash, classification) retained."
+            ),
+        )
+
+    return pruned_count
 
 
 # ─────────────────────────────────────────────────────────────────────────────

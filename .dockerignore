@@ -1,0 +1,51 @@
+# ONTO — Docker build exclusions
+# Files listed here are not sent to the Docker build context.
+# Smaller context = faster builds and no risk of leaking secrets.
+
+# Version control
+.git
+.gitignore
+.github
+
+# Local secrets and runtime data (NEVER bake into image)
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+*.enc
+
+# Test suite and development tools
+tests/
+conftest.py
+requirements-test.txt
+.flake8
+pytest.ini
+setup.cfg
+bandit.yaml
+
+# Documentation (not needed at runtime)
+docs/
+*.md
+LICENSE
+CHANGELOG.md
+
+# Python byte-code caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editor artefacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Container config (no recursive Docker builds)
+Dockerfile
+docker-compose.yml
+.dockerignore

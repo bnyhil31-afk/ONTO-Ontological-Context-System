@@ -332,6 +332,40 @@ def _shutdown() -> None:
 # ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────────────
 
+def check_config() -> int:
+    """
+    --check-config mode: validate the current configuration and print a
+    summary of what differs from the defaults.
+
+    Returns 0 if the configuration is valid, 1 if there are errors.
+    Does not start the server.
+    """
+    print(config.summary())
+    print()
+
+    # Production posture check
+    posture_ok = True
+    try:
+        config.validate_production_posture()
+        print("[OK] Production posture check passed.")
+    except RuntimeError as exc:
+        print(f"[FAIL] Production posture check failed:\n{exc}")
+        posture_ok = False
+
+    # Config diff from defaults
+    diff = config.diff_from_defaults()
+    if diff:
+        print(f"\nConfiguration changes from defaults ({len(diff)} item(s)):")
+        for prop, change in sorted(diff.items()):
+            print(f"  {prop}: {change['default']!r} → {change['current']!r}")
+    else:
+        print("\nAll configuration values are at their defaults.")
+
+    return 0 if posture_ok else 1
+
+
 if __name__ == "__main__":
+    if "--check-config" in sys.argv:
+        sys.exit(check_config())
     boot()
     run()

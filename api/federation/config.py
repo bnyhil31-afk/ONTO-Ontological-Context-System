@@ -125,6 +125,23 @@ MAX_MSGS_PER_PEER_PER_MIN: int = int(
 )
 
 # ---------------------------------------------------------------------------
+# CIRCUIT BREAKER
+# Protects against cascading failures from misbehaving or unreachable peers.
+# Opens the circuit after CIRCUIT_BREAKER_FAILURE_THRESHOLD consecutive
+# failures, and half-opens after CIRCUIT_BREAKER_RECOVERY_SECONDS.
+# ---------------------------------------------------------------------------
+
+# Number of consecutive failures before the circuit opens for a peer.
+CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(
+    os.getenv("ONTO_FED_CB_FAILURE_THRESHOLD", "5")
+)
+
+# Seconds to wait in OPEN state before allowing a single probe (half-open).
+CIRCUIT_BREAKER_RECOVERY_SECONDS: int = int(
+    os.getenv("ONTO_FED_CB_RECOVERY_SECONDS", "60")
+)
+
+# ---------------------------------------------------------------------------
 # STATIC PEERS (for local stage)
 # Format: did:key:z6Mk...@host:port,did:key:z6Mk...@host:port
 # ---------------------------------------------------------------------------
