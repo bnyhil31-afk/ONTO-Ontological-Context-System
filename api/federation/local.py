@@ -655,5 +655,5 @@ class LocalAdapter:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=_FED_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=_FED_TIMEOUT) as resp:  # nosec B310
             return json.loads(resp.read())

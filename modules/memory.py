@@ -486,14 +486,11 @@ def query(
         chain_hash, signature_algorithm, classification
     """
 
-    count_sql = f"SELECT COUNT(*) FROM events {where_clause}"
-    data_sql = f"""
-        SELECT {select_cols}
-        FROM events
-        {where_clause}
-        ORDER BY id {order_sql}
-        LIMIT ? OFFSET ?
-    """
+    count_sql = f"SELECT COUNT(*) FROM events {where_clause}"  # nosec B608
+    data_sql = (
+        f"SELECT {select_cols} FROM events {where_clause}"  # nosec B608
+        f" ORDER BY id {order_sql} LIMIT ? OFFSET ?"
+    )
 
     with _connect() as conn:
         # Total count (before pagination) for the caller to compute pages

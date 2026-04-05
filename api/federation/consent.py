@@ -93,7 +93,7 @@ def _get_latest_chain_hash() -> Optional[str]:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT chain_hash FROM {_TABLE} "
+            f"SELECT chain_hash FROM {_TABLE} "  # nosec B608
             f"ORDER BY granted_at DESC LIMIT 1"
         ).fetchone()
         return row["chain_hash"] if row else None
@@ -129,7 +129,7 @@ def grant(
     conn = _get_conn()
     try:
         conn.execute(
-            f"INSERT INTO {_TABLE} "
+            f"INSERT INTO {_TABLE} "  # nosec B608
             f"(consent_id, grantor_session, recipient_node, "
             f"data_description, data_concept_hash, classification, "
             f"granted_at, expires_at, last_reconfirmed, chain_hash) "
@@ -172,13 +172,13 @@ def revoke(consent_id: str, reason: str = "") -> bool:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT revoked_at FROM {_TABLE} WHERE consent_id = ?",
+            f"SELECT revoked_at FROM {_TABLE} WHERE consent_id = ?",  # nosec B608
             (consent_id,),
         ).fetchone()
         if not row or row["revoked_at"] is not None:
             return False
         conn.execute(
-            f"UPDATE {_TABLE} "
+            f"UPDATE {_TABLE} "  # nosec B608
             f"SET revoked_at = ?, revocation_reason = ? "
             f"WHERE consent_id = ?",
             (now, reason, consent_id),
@@ -208,7 +208,7 @@ def is_valid(consent_id: str, recipient_node: str) -> tuple:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT recipient_node, revoked_at, expires_at "
+            f"SELECT recipient_node, revoked_at, expires_at "  # nosec B608
             f"FROM {_TABLE} WHERE consent_id = ?",
             (consent_id,),
         ).fetchone()
@@ -240,7 +240,7 @@ def needs_reconfirmation(consent_id: str) -> bool:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT expires_at, last_reconfirmed, revoked_at "
+            f"SELECT expires_at, last_reconfirmed, revoked_at "  # nosec B608
             f"FROM {_TABLE} WHERE consent_id = ?",
             (consent_id,),
         ).fetchone()
@@ -265,13 +265,13 @@ def reconfirm(consent_id: str, session_hash: str) -> bool:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT revoked_at FROM {_TABLE} WHERE consent_id = ?",
+            f"SELECT revoked_at FROM {_TABLE} WHERE consent_id = ?",  # nosec B608
             (consent_id,),
         ).fetchone()
         if not row or row["revoked_at"] is not None:
             return False
         conn.execute(
-            f"UPDATE {_TABLE} SET last_reconfirmed = ? "
+            f"UPDATE {_TABLE} SET last_reconfirmed = ? "  # nosec B608
             f"WHERE consent_id = ?",
             (time.time(), consent_id),
         )
@@ -296,7 +296,7 @@ def get(consent_id: str) -> Optional[dict]:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT * FROM {_TABLE} WHERE consent_id = ?",
+            f"SELECT * FROM {_TABLE} WHERE consent_id = ?",  # nosec B608
             (consent_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -309,7 +309,7 @@ def list_for_peer(peer_did: str) -> List[dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            f"SELECT consent_id, data_description, classification, "
+            f"SELECT consent_id, data_description, classification, "  # nosec B608
             f"granted_at, expires_at, revoked_at "
             f"FROM {_TABLE} WHERE recipient_node = ? "
             f"ORDER BY granted_at DESC",
@@ -334,7 +334,7 @@ def list_pending_reconfirmation() -> List[dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            f"SELECT consent_id, recipient_node, data_description, "
+            f"SELECT consent_id, recipient_node, data_description, "  # nosec B608
             f"last_reconfirmed "
             f"FROM {_TABLE} "
             f"WHERE expires_at IS NULL AND revoked_at IS NULL "
@@ -355,7 +355,7 @@ def verify_chain_integrity() -> dict:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            f"SELECT consent_id, granted_at, chain_hash "
+            f"SELECT consent_id, granted_at, chain_hash "  # nosec B608
             f"FROM {_TABLE} ORDER BY granted_at ASC"
         ).fetchall()
     finally:

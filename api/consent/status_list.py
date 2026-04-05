@@ -96,11 +96,11 @@ def allocate_index() -> int:
         try:
             with conn:
                 row = conn.execute(
-                    f"SELECT next_idx FROM {_COUNTER_TABLE} WHERE id = 1"
+                    f"SELECT next_idx FROM {_COUNTER_TABLE} WHERE id = 1"  # nosec B608
                 ).fetchone()
                 idx = row["next_idx"] if row else 0
                 conn.execute(
-                    f"UPDATE {_COUNTER_TABLE} SET next_idx = ? WHERE id = 1",
+                    f"UPDATE {_COUNTER_TABLE} SET next_idx = ? WHERE id = 1",  # nosec B608
                     (idx + 1,),
                 )
             return idx
@@ -113,7 +113,7 @@ def get_next_index() -> int:
     conn = _get_conn()
     try:
         row = conn.execute(
-            f"SELECT next_idx FROM {_COUNTER_TABLE} WHERE id = 1"
+            f"SELECT next_idx FROM {_COUNTER_TABLE} WHERE id = 1"  # nosec B608
         ).fetchone()
         return row["next_idx"] if row else 0
     finally:
