@@ -406,6 +406,50 @@ class TransparencyResponse(BaseModel):
     generated_at: str
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION DEPENDENCY
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _require_session(
+    authorization: Optional[str] = Header(None),
+) -> tuple:
+    """
+    FastAPI dependency that validates the Bearer token.
+    Returns (session_record, new_token_or_none).
+
+    The new token (from rotation) must be sent to the client
+    in the X-Session-Token response header. Clients must use
+    this token for all subsequent requests.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header required. Format: Bearer <token>",
+        )
+
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    session = session_manager.validate(raw_token)
+
+    if session is None:
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Session expired or invalid. "
+                "Authenticate again via POST /auth."
+            ),
+        )
+
+    # Rotate on every authenticated request — T-013 mitigation
+    new_token = session_manager.rotate(raw_token)
+    return session, new_token
+
+
+def _session_headers(new_token) -> Dict[str, str]:
+    """Build response headers containing the rotated session token."""
+    return {"X-Session-Token": str(new_token) if new_token else ""}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # EXPANDED AUDIT ENDPOINTS
 # Replace the existing get_audit() endpoint and add two new endpoints.
@@ -545,49 +589,6 @@ async def rate_limit_middleware(request: Request, call_next):
             content={"detail": reason},
         )
     return await call_next(request)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SESSION DEPENDENCY
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def _require_session(
-    authorization: Optional[str] = Header(None),
-) -> tuple:
-    """
-    FastAPI dependency that validates the Bearer token.
-    Returns (session_record, new_token_or_none).
-
-    The new token (from rotation) must be sent to the client
-    in the X-Session-Token response header. Clients must use
-    this token for all subsequent requests.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header required. Format: Bearer <token>",
-        )
-
-    raw_token = authorization.removeprefix("Bearer ").strip()
-    session = session_manager.validate(raw_token)
-
-    if session is None:
-        raise HTTPException(
-            status_code=401,
-            detail=(
-                "Session expired or invalid. "
-                "Authenticate again via POST /auth."
-            ),
-        )
-
-    # Rotate on every authenticated request — T-013 mitigation
-    new_token = session_manager.rotate(raw_token)
-    return session, new_token
-
-
-def _session_headers(new_token) -> Dict[str, str]:
-    """Build response headers containing the rotated session token."""
-    return {"X-Session-Token": str(new_token) if new_token else ""}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
