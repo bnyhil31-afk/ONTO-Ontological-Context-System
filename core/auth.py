@@ -264,7 +264,7 @@ class LocalAuthManager:
                 identity="",
                 reason=(
                     f"Too many failed attempts. "
-                    f"Try again in {remaining} seconds."
+                    f"Try again later (in {remaining} seconds)."
                 )
             )
 

@@ -494,13 +494,16 @@ class TestBruteForceProtection(unittest.TestCase):
         A-5: After max attempts, lockout message must be generic.
         Must not say how many attempts triggered the lockout.
         """
+        from unittest.mock import patch
         manager = __import__("core.auth", fromlist=["LocalAuthManager"]).LocalAuthManager()
         # Simulate max attempts
         from core.auth import MAX_ATTEMPTS, LOCKOUT_DURATION_SECONDS
         manager._failed_attempts = MAX_ATTEMPTS
         manager._locked_until = __import__("time").monotonic() + LOCKOUT_DURATION_SECONDS
 
-        result = manager.authenticate(passphrase_input="any")
+        # Patch is_configured so the lockout check is not bypassed by dev mode.
+        with patch.object(manager, "is_configured", return_value=True):
+            result = manager.authenticate(passphrase_input="any")
         self.assertFalse(result.success)
         self.assertNotIn("5", result.reason,
                          "Lockout message must not reveal attempt threshold.")
@@ -673,6 +676,21 @@ class TestInputSanitization(unittest.TestCase):
 
     Expected: 6 passed.
     """
+
+    def setUp(self):
+        import modules.memory as mem
+        self._tmp = tempfile.mktemp(suffix=".db")
+        self._orig_db = mem.DB_PATH
+        mem.DB_PATH = self._tmp
+        mem.initialize()
+
+    def tearDown(self):
+        import modules.memory as mem
+        mem.DB_PATH = self._orig_db
+        try:
+            os.unlink(self._tmp)
+        except FileNotFoundError:
+            pass
 
     def _sanitize(self, text):
         from modules.intake import _sanitize

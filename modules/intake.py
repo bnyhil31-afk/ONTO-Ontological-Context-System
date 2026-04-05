@@ -84,7 +84,8 @@ _CRISIS_INDIRECT = [
     r"\bwhat'?s\s+the\s+point\b",
     r"\bcan'?t\s+see\s+a\s+way\s+(forward|out|through)\b",
     r"\bgive\s+up\s+on\s+(everything|life|myself)\b",
-    r"\bfeeling\s+(hopeless|worthless|like\s+a\s+burden)\b",
+    r"\bfeeling\s+(?:\w+\s+)?(hopeless|worthless)\b",
+    r"\blike\s+a\s+burden\b",
     r"\bmiss\s+me\s+when\s+i'?m\s+gone\b",
 ]
 
@@ -391,8 +392,10 @@ def _sanitize(text: str) -> tuple:
     # Normalize Unicode (NFC form)
     clean = unicodedata.normalize("NFC", clean)
 
-    # Normalize whitespace — collapse multiple spaces/tabs
-    clean = re.sub(r"[ \t]+", " ", clean).strip()
+    # Normalize whitespace — collapse runs of spaces or tabs independently
+    clean = re.sub(r" {2,}", " ", clean)      # multiple spaces → one space
+    clean = re.sub(r"\t{2,}", "\t", clean)    # multiple tabs   → one tab
+    clean = clean.strip()
     # Collapse multiple consecutive newlines to maximum two
     clean = re.sub(r"\n{3,}", "\n\n", clean)
 
