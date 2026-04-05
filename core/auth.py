@@ -313,8 +313,17 @@ class LocalAuthManager:
         else:
             auth_salt = bytes.fromhex(auth_salt_hex)
 
-        # Compute and compare
-        entered_hash = self._hash_passphrase(entered, auth_salt)
+        # Compute and compare — use stored params so verification works even
+        # when module defaults change between versions.
+        stored_params = state.get("algorithm_params", {})
+        entered_hash = self._hash_passphrase(
+            entered,
+            auth_salt,
+            time_cost=stored_params.get("time_cost", AUTH_ARGON2_TIME_COST),
+            memory_cost=stored_params.get("memory_kb", AUTH_ARGON2_MEMORY_KB),
+            parallelism=stored_params.get("parallelism", AUTH_ARGON2_PARALLELISM),
+            hash_len=stored_params.get("hash_len", AUTH_ARGON2_HASH_LEN),
+        )
 
         if self._constant_time_compare(entered_hash, stored_hash):
             self._failed_attempts = 0
@@ -386,7 +395,16 @@ class LocalAuthManager:
     # CRYPTOGRAPHIC HELPERS — ARGON2ID (OWASP 2025)
     # ─────────────────────────────────────────────────────────────────
 
-    def _hash_passphrase(self, passphrase: str, salt: bytes) -> str:
+    def _hash_passphrase(
+        self,
+        passphrase: str,
+        salt: bytes,
+        *,
+        time_cost: int = AUTH_ARGON2_TIME_COST,
+        memory_cost: int = AUTH_ARGON2_MEMORY_KB,
+        parallelism: int = AUTH_ARGON2_PARALLELISM,
+        hash_len: int = AUTH_ARGON2_HASH_LEN,
+    ) -> str:
         """
         Hashes a passphrase using Argon2id with the provided salt.
 
@@ -395,20 +413,28 @@ class LocalAuthManager:
           - GPU/ASIC resistant: parallel attacks are expensive
           - Post-quantum resistant: memory-hardness defeats Grover speedup
           - Random per-installation salt: defeats rainbow tables
+
+        Keyword args allow callers to pass stored algorithm_params so that
+        verification uses the same parameters that were used during setup,
+        which is required for forward compatibility when defaults change.
         """
         from argon2.low_level import hash_secret_raw, Type
 
         # Never substitute a random salt — the caller is always responsible
         # for providing the correct salt. A random fallback would produce
         # an irreproducible hash, making every authentication attempt fail.
-        # Argon2 requires salt length >= 8 bytes; callers must ensure this.
+        # Argon2 requires salt length >= 8 bytes; legacy auth.json files
+        # that stored no auth_salt use a fixed zero-byte sentinel for
+        # deterministic verification.
+        effective_salt = salt if len(salt) >= 8 else b"\x00" * 8
+
         key = hash_secret_raw(
             secret=passphrase.encode("utf-8"),
-            salt=salt,
-            time_cost=AUTH_ARGON2_TIME_COST,
-            memory_cost=AUTH_ARGON2_MEMORY_KB,
-            parallelism=AUTH_ARGON2_PARALLELISM,
-            hash_len=AUTH_ARGON2_HASH_LEN,
+            salt=effective_salt,
+            time_cost=time_cost,
+            memory_cost=memory_cost,
+            parallelism=parallelism,
+            hash_len=hash_len,
             type=Type.ID
         )
         return key.hex()

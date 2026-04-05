@@ -33,6 +33,10 @@ class ONTOConfig:
     Production deployments should override defaults via environment.
     """
 
+    def __init__(self) -> None:
+        # Override slots — used by tests; None means "use env var".
+        self._is_production_override = None  # type: Optional[bool]
+
     # ─────────────────────────────────────────────────────────────────────────
     # RATE LIMITING (item 2.05)
     # ─────────────────────────────────────────────────────────────────────────
@@ -159,7 +163,14 @@ class ONTOConfig:
     @property
     def IS_PRODUCTION(self) -> bool:
         """True if running in production environment."""
+        if self._is_production_override is not None:
+            return self._is_production_override
         return self.ENVIRONMENT == "production"
+
+    @IS_PRODUCTION.setter
+    def IS_PRODUCTION(self, value: bool) -> None:
+        """Allow tests to override the production flag without env var changes."""
+        self._is_production_override = bool(value)
 
     # ─────────────────────────────────────────────────────────────────────────
     # SAFE MESSAGING (item C4 — REVIEW_001)
