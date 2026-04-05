@@ -51,6 +51,7 @@ Documentation available at:
   http://127.0.0.1:8000/redoc  (ReDoc)
 """
 
+import asyncio
 import os
 import sys
 import uuid
@@ -65,14 +66,16 @@ if _ROOT not in sys.path:
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.config import config
-from core.ratelimit import rate_limiter
+from core.ratelimit import rate_limiter, global_rate_limiter
 from core.session import session_manager
 from core.verify import verify_principles
 from modules import checkpoint, contextualize, graph, intake, memory, surface
 from modules.checkpoint import ALWAYS_ASK_CONFIDENCE, ALWAYS_ASK_WEIGHT
+from core.logging import onto_logger
+from core.metrics import metrics
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,11 +100,60 @@ async def lifespan(app: FastAPI):
       - Clear all active sessions (no silent session persistence).
     """
     verify_principles()       # halts process if tampered — intentional
+
+    # Refuse to start a production instance with an insecure configuration.
+    # This mirrors the verify_principles() pattern: fail loudly at boot,
+    # never silently run in a state that could expose sensitive data.
+    try:
+        config.validate_production_posture()
+    except RuntimeError as exc:
+        onto_logger.critical("POSTURE_CHECK_FAILED", detail=str(exc))
+        sys.stderr.write(f"[ONTO FATAL] Production posture check failed:\n{exc}\n")
+        sys.exit(1)
+
     memory.initialize()
+
+    # Verify Merkle chain integrity on startup if configured.
+    # A gap in the chain means records were tampered with or removed.
+    # The default is to warn loudly rather than halt, so the system remains
+    # available while operators investigate. Set
+    # ONTO_CHAIN_INTEGRITY_HALT_ON_FAILURE=true for a hard stop.
+    if config.CHAIN_VERIFY_ON_STARTUP:
+        _chain_result = memory.verify_chain()
+        if not _chain_result.get("intact", True):
+            _gap_count = len(_chain_result.get("gaps", []))
+            onto_logger.error(
+                "CHAIN_INTEGRITY_WARNING",
+                gap_count=_gap_count,
+                detail="Audit trail Merkle chain has gaps — possible tampering detected.",
+            )
+            memory.record(
+                event_type="CHAIN_INTEGRITY_WARNING",
+                notes=(
+                    f"Merkle chain integrity check failed on startup. "
+                    f"Gaps detected: {_gap_count}. "
+                    f"Detail: {_chain_result}"
+                ),
+            )
+            if config.CHAIN_INTEGRITY_HALT_ON_FAILURE:
+                sys.stderr.write(
+                    "[ONTO FATAL] Audit chain integrity check failed. "
+                    f"{_gap_count} gap(s) detected. "
+                    "Set ONTO_CHAIN_INTEGRITY_HALT_ON_FAILURE=false to continue anyway.\n"
+                )
+                sys.exit(1)
+            else:
+                sys.stderr.write(
+                    "[ONTO WARNING] Audit chain integrity check failed. "
+                    f"{_gap_count} gap(s) detected. "
+                    "The server will continue running. Investigate immediately.\n"
+                )
+
     memory.record(
         event_type="SERVER_START",
         notes=f"ONTO API server started. Environment: {config.ENVIRONMENT}.",
     )
+    onto_logger.info("SERVER_START", environment=config.ENVIRONMENT)
 
     yield
 
@@ -109,6 +161,7 @@ async def lifespan(app: FastAPI):
         event_type="SERVER_STOP",
         notes="ONTO API server stopped.",
     )
+    onto_logger.info("SERVER_STOP")
     session_manager.reset()
 
 
@@ -173,14 +226,18 @@ app = FastAPI(
 # CORS (A-3) — Restrict to localhost only.
 # FastAPI defaults to allow-all origins; explicit restriction is required.
 # The "null" origin covers file:// local UIs (e.g. a local dashboard HTML).
+# Controlled by ONTO_CORS_ALLOW_NULL_ORIGIN (default: True).
 # ─────────────────────────────────────────────────────────────────────────────
+_cors_origins = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+if config.CORS_ALLOW_NULL_ORIGIN:
+    _cors_origins.append("null")  # file:// local UIs
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-        "null",  # file:// local UIs
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
@@ -190,7 +247,7 @@ app.add_middleware(
 # ─────────────────────────────────────────────────────────────────────────────
 # SECURITY HEADERS MIDDLEWARE (A-2)
 # Injected on every response. Protects against MIME sniffing, clickjacking,
-# and accidental token caching by intermediaries.
+# accidental token caching, and content injection.
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.middleware("http")
@@ -200,6 +257,22 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-XSS-Protection"] = "0"  # modern browsers ignore; 1 can be exploited
+    # This is a JSON API with no HTML rendering — default-src 'none' is the
+    # most restrictive valid CSP. frame-ancestors 'none' supersedes X-Frame-Options
+    # for modern browsers (both are kept for compatibility).
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'none'; frame-ancestors 'none'"
+    )
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), microphone=(), camera=()"
+    )
+    # HSTS: only set in production where TLS is expected.
+    # Omitting it in development avoids confusing browsers during local HTTP work.
+    if config.IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
     return response
 
 
@@ -258,7 +331,6 @@ class ProcessRequest(BaseModel):
     input: str = Field(
         ...,
         min_length=1,
-        max_length=10_000,
         description="Input to process through the ONTO loop",
     )
     human_decision: Optional[str] = Field(
@@ -268,6 +340,19 @@ class ProcessRequest(BaseModel):
             "One of: proceed | veto | flag | defer"
         ),
     )
+
+    @field_validator("input", mode="before")
+    @classmethod
+    def check_input_length(cls, v: str) -> str:
+        # Read the limit from config at validation time so that
+        # ONTO_MAX_INPUT_LENGTH is the single authority — no drift from
+        # a hardcoded Field(max_length=...) that can fall out of sync.
+        limit = config.MAX_INPUT_LENGTH
+        if len(v) > limit:
+            raise ValueError(
+                f"Input exceeds maximum length of {limit} characters."
+            )
+        return v
 
 
 class CheckpointInfo(BaseModel):
@@ -403,6 +488,7 @@ class TransparencyResponse(BaseModel):
     data_classifications_in_use: List[str]
     eu_ai_act_articles_addressed: List[str]
     gdpr_articles_addressed: List[str]
+    erasure_implementation_note: str
     generated_at: str
 
 
@@ -566,6 +652,86 @@ class HealthResponse(BaseModel):
     environment: str
     session_active: bool
     principles_verified: bool
+    db_reachable: bool
+    chain_intact: Optional[bool]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUEST TIMEOUT MIDDLEWARE
+# Enforces a maximum wall-clock time for any request. A hung upstream call
+# (e.g. a blocked graph computation or a misbehaving federation peer) will
+# not hold the connection open indefinitely. Returns 503 on timeout so that
+# callers can distinguish a timeout from a normal processing error.
+# Controlled by ONTO_REQUEST_TIMEOUT_SECONDS (default 30s). /health is exempt.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def request_timeout_middleware(request: Request, call_next):
+    """
+    Enforce a per-request wall-clock timeout.
+    /health is exempt so infrastructure probes are never blocked.
+    """
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    timeout = config.REQUEST_TIMEOUT_SECONDS
+    if timeout == 0:
+        return await call_next(request)
+
+    try:
+        return await asyncio.wait_for(call_next(request), timeout=timeout)
+    except asyncio.TimeoutError:
+        metrics.inc_timeout_rejection()
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"Request timed out after {timeout} second(s). "
+                    "Please try again."
+                )
+            },
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BODY SIZE LIMIT MIDDLEWARE
+# Enforced at the ASGI layer, before any JSON parsing or Pydantic validation.
+# This guards against oversized-body DoS attempts that would otherwise reach
+# the application level. Pydantic field-level limits are the second line of
+# defence; this is the first.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def body_size_limit_middleware(request: Request, call_next):
+    """
+    Reject requests whose Content-Length exceeds ONTO_MAX_BODY_BYTES (default 1 MiB).
+    /health is exempt — it accepts no body and must remain unconditionally reachable.
+    If Content-Length is absent on a non-exempt POST/PUT/PATCH, the limit is not
+    checked (streaming bodies are handled by Pydantic field validation downstream).
+    """
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    max_bytes = config.MAX_BODY_BYTES
+    if max_bytes > 0:
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > max_bytes:
+                    metrics.inc_body_limit_rejection()
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": (
+                                f"Request body too large. "
+                                f"Maximum allowed: {max_bytes} bytes."
+                            )
+                        },
+                    )
+            except ValueError:
+                pass  # Non-integer Content-Length — let the framework handle it
+
+    return await call_next(request)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,15 +741,34 @@ class HealthResponse(BaseModel):
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """
-    Apply the sliding window rate limiter to all endpoints except /health.
-    Returns 429 with a clear reason and retry guidance when exceeded.
-    Rate limit: configured via ONTO_RATE_LIMIT_PER_MINUTE (default 60/min).
+    Apply rate limiting to all endpoints except /health.
+    Two tiers are checked in order:
+
+    1. Global limit (ONTO_GLOBAL_RATE_LIMIT_PER_MINUTE, default disabled):
+       Aggregate ceiling across ALL callers. If the global ceiling is hit,
+       all clients see 429 until the window clears.
+
+    2. Per-client limit (ONTO_RATE_LIMIT_PER_MINUTE, default 60/min):
+       Standard sliding window per caller.
+
+    Both return 429 with a clear reason and retry guidance when exceeded.
     """
     if request.url.path in ("/health", "/docs", "/redoc", "/openapi.json"):
         return await call_next(request)
 
+    # Tier 1: global ceiling — checked before per-client
+    global_allowed, global_reason = global_rate_limiter.check_and_record()
+    if not global_allowed:
+        metrics.inc_rate_limit_hit(tier="global")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": global_reason},
+        )
+
+    # Tier 2: per-client limit
     allowed, reason = rate_limiter.check_and_record()
     if not allowed:
+        metrics.inc_rate_limit_hit(tier="per_client")
         return JSONResponse(
             status_code=429,
             content={"detail": reason},
@@ -635,12 +820,77 @@ async def health():
     except SystemExit:
         principles_ok = False
 
+    # Lightweight database reachability probe — fetch the last record only.
+    db_reachable = False
+    chain_intact: Optional[bool] = None
+    try:
+        _recent = memory.read_recent(1)
+        db_reachable = True
+        # Verify the tail of the chain (last 2 records) for a cheap
+        # integrity signal without walking the full history every probe.
+        if _recent:
+            _tail = memory.verify_chain_tail(n=2)
+            chain_intact = _tail.get("intact", True)
+    except Exception:
+        db_reachable = False
+
+    _overall_status = "ok" if db_reachable and principles_ok else "degraded"
+
     return HealthResponse(
-        status="ok",
+        status=_overall_status,
         version="1.0.0",
         environment=config.ENVIRONMENT,
         session_active=session_manager.is_active(),
         principles_verified=bool(principles_ok),
+        db_reachable=db_reachable,
+        chain_intact=chain_intact,
+    )
+
+
+@app.get(
+    "/metrics",
+    tags=["System"],
+    summary="Prometheus metrics endpoint",
+    include_in_schema=True,
+)
+async def prometheus_metrics(
+    token: Optional[str] = Header(None, alias="Authorization"),
+):
+    """
+    Prometheus-format metrics for ONTO.
+
+    Disabled by default. Enable with ONTO_METRICS_ENABLED=true.
+
+    Requires authentication by default (ONTO_METRICS_REQUIRE_AUTH=true).
+    Set ONTO_METRICS_REQUIRE_AUTH=false to allow unauthenticated scraping
+    (only in controlled network environments).
+
+    Returns Prometheus exposition format 0.0.4 text.
+    """
+    if not config.METRICS_ENABLED:
+        raise HTTPException(status_code=404, detail="Metrics endpoint is not enabled.")
+
+    if config.METRICS_REQUIRE_AUTH:
+        # Reuse the existing session token validation
+        raw_token = None
+        if token and token.startswith("Bearer "):
+            raw_token = token.removeprefix("Bearer ").strip()
+        if not raw_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Metrics endpoint requires authentication.",
+            )
+        session = session_manager.validate(raw_token)
+        if session is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired session token.",
+            )
+
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        content=metrics.render(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
     )
 
 
@@ -1265,6 +1515,24 @@ async def system_transparency():
                 "Art. 30 — records of processing (full audit trail)",
                 "Art. 32 — security measures (AES-256-GCM, Argon2id, Merkle chain)",
             ],
+            "erasure_implementation_note": (
+                "The audit trail is append-only by design, satisfying the security "
+                "requirement in GDPR Recital 49. Right to erasure (Art. 17) is "
+                "implemented via payload cryptographic erasure: personal content "
+                "fields (input, context, output, notes) are nullified from eligible "
+                "records while the audit shell (id, timestamp, event_type, "
+                "classification, chain_hash) is retained to preserve Merkle chain "
+                "integrity. This approach is consistent with EDPB guidance that "
+                "cryptographic erasure satisfies Art. 17 where structural deletion "
+                "is impossible without destroying verifiable integrity proofs. "
+                f"Data retention period: "
+                + (
+                    f"{config.DATA_RETENTION_DAYS} days "
+                    "(ONTO_DATA_RETENTION_DAYS)"
+                    if config.DATA_RETENTION_DAYS > 0
+                    else "indefinite (ONTO_DATA_RETENTION_DAYS not configured)"
+                )
+            ),
             "generated_at": datetime.now(_tz.utc).isoformat(),
         },
     )

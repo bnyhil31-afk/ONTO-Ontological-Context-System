@@ -54,3 +54,12 @@ cryptography>=41.0
 # See REVIEW_001 Finding C1 for rationale.
 # pip-audit scans this on every CI run.
 argon2-cffi>=21.3.0
+
+# ── Supply Chain Security (CI only) ──────────────────────────────────────────
+# Static Application Security Testing — reports MEDIUM+ severity findings.
+# Run: bandit -r core/ modules/ api/ -ll --exclude tests/
+bandit>=1.7.0
+
+# Software Bill of Materials — generates CycloneDX SBOM for artifact upload.
+# Run: cyclonedx-py environment -o sbom.json
+cyclonedx-bom>=4.0.0

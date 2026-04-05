@@ -137,12 +137,23 @@ class TestAuthentication(unittest.TestCase):
     # BRUTE FORCE PROTECTION (T-014)
     # ------------------------------------------------------------------
 
-    def test_failed_attempt_count_shown_in_reason(self):
-        """Failed attempt reason mentions remaining attempts."""
+    def test_failed_attempt_returns_nonempty_reason(self):
+        """A failed authentication returns a non-empty, informative reason string.
+
+        The reason must not expose the remaining attempt count (A-5 — see
+        TestBruteForceProtection.test_incorrect_passphrase_returns_generic_message),
+        but it must not be blank so the caller can surface a useful message.
+        """
         self.manager.setup("correct-horse-battery-staple", "blue bicycle")
         result = self.manager.authenticate(passphrase_input="wrong")
         self.assertFalse(result.success)
-        self.assertIn("attempt", result.reason.lower())
+        self.assertTrue(
+            len(result.reason) > 0,
+            "Auth failure must return a non-empty reason string.",
+        )
+        # The reason must signal failure without leaking how many tries remain.
+        self.assertNotIn("remaining", result.reason.lower())
+        self.assertNotIn("attempt", result.reason.lower())
 
     # ------------------------------------------------------------------
     # INPUT VALIDATION
