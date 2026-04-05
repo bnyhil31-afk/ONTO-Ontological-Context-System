@@ -691,6 +691,10 @@ async def authenticate(body: AuthRequest):
 
     identity = result.identity or body.identity
     token = session_manager.start(identity=identity)
+    memory.record(
+        event_type="AUTH_SUCCESS",
+        notes=f"Successful authentication. identity={identity}",
+    )
     result.clear_passphrase()
     # A-6: Best-effort passphrase clearing from the Pydantic model.
     # Python string immutability means the original string object can't
@@ -1114,6 +1118,16 @@ async def data_export(
             detail=_safe_error("data_export", exc),
         )
 
+    memory.record(
+        event_type="DATA_EXPORT",
+        notes=(
+            f"GDPR Art. 15 data export. "
+            f"classification_min={classification_min}. "
+            f"include_graph={include_graph}."
+        ),
+        classification=classification_min,
+    )
+
     return JSONResponse(
         status_code=200,
         content=result,
@@ -1202,17 +1216,19 @@ async def system_transparency():
     """
     from datetime import datetime, timezone as _tz
 
-    # Factual system properties — not config-driven, as they describe the code.
+    # Known limitations sourced from config so they can be overridden via
+    # ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS env var without code changes.
     known_limitations = [
-        "Classification is keyword-heuristic only — not ML-based at Stage 1.",
-        "CRISIS detection is keyword-based — not a clinical assessment tool.",
-        "Graph relationships are derived from inputs, not verified ground truth.",
-        "Consent ledger is not yet active — deferred to Stage 2.",
-        "Single-user deployment only — no RBAC at Stage 1.",
-        "Right to correct is not supported (append-only audit trail).",
-        "Bias monitoring is designed but not yet implemented (Stage 2).",
-        "Field-level encryption for HIPAA PHI is deferred to Stage 2.",
+        lim.strip()
+        for lim in config.COMPLIANCE_TRANSPARENCY_KNOWN_LIMITATIONS.split("|")
+        if lim.strip()
     ]
+
+    memory.record(
+        event_type="TRANSPARENCY_READ",
+        notes="EU AI Act Art. 13 transparency disclosure accessed.",
+        classification=0,
+    )
 
     return JSONResponse(
         status_code=200,

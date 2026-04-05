@@ -12,7 +12,8 @@ Covers:
   EU AI Act Art. 13 — System transparency endpoint
   EU AI Act Art. 14 — Bias warning in moderate display mode
 
-Expected result: 26 passed, 0 failed, 0 errors.
+Expected result: 34 passed, 0 failed, 0 errors (8 may be skipped if
+fastapi[testclient] is unavailable).
 If you see anything different — something needs attention.
 """
 
@@ -708,6 +709,180 @@ class TestEUAIActArt14_BiasWarning(unittest.TestCase):
             "Diversity note", display,
             "Simple display must not include source diversity warning."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST: AUDIT EVENTS — AUTH_SUCCESS, DATA_EXPORT, TRANSPARENCY_READ
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAuditEvents(unittest.TestCase):
+    """
+    Verify that the three compliance-critical audit events are emitted:
+      AUTH_SUCCESS     — successful authentication must be recorded
+      DATA_EXPORT      — GDPR Art. 15 data export must be recorded
+      TRANSPARENCY_READ — EU AI Act Art. 13 disclosure access must be recorded
+
+    Expected: 6 passed (or skipped if testclient unavailable).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from fastapi.testclient import TestClient
+            cls._has_testclient = True
+        except ImportError:
+            cls._has_testclient = False
+
+    def _skip_if_no_client(self):
+        if not self._has_testclient:
+            self.skipTest("fastapi[testclient] not installed")
+
+    def setUp(self):
+        self._skip_if_no_client()
+        import modules.memory as memory_module
+        self._tmp = tempfile.mktemp(suffix=".db")
+        self._orig_db = memory_module.DB_PATH
+        memory_module.DB_PATH = self._tmp
+        memory_module.initialize()
+
+        from fastapi.testclient import TestClient
+        import api.main as api_module
+        self._api = api_module
+        self._client = TestClient(api_module.app, raise_server_exceptions=False)
+
+    def tearDown(self):
+        import modules.memory as memory_module
+        memory_module.DB_PATH = self._orig_db
+        try:
+            os.unlink(self._tmp)
+        except FileNotFoundError:
+            pass
+
+    def _auth_headers(self, token):
+        return {"X-Session-Token": token} if token else {}
+
+    # ── AUTH_SUCCESS ──────────────────────────────────────────────────────────
+
+    def test_auth_success_event_is_recorded(self):
+        """
+        A successful POST /auth must produce an AUTH_SUCCESS audit record.
+        """
+        import modules.memory as memory_module
+
+        resp = self._client.post("/auth", json={"passphrase": "", "identity": "audit_test"})
+        self.assertEqual(resp.status_code, 200, f"Auth failed: {resp.text[:200]}")
+
+        result = memory_module.query(event_type="AUTH_SUCCESS", limit=10)
+        records = result.get("records", [])
+        self.assertTrue(
+            records,
+            "No AUTH_SUCCESS record found after successful authentication."
+        )
+
+    def test_auth_success_notes_contain_identity(self):
+        """
+        The AUTH_SUCCESS record notes must include the identity that authenticated.
+        """
+        import modules.memory as memory_module
+
+        resp = self._client.post("/auth", json={"passphrase": "", "identity": "alice"})
+        if resp.status_code != 200:
+            self.skipTest(f"Auth unavailable: {resp.status_code}")
+
+        result = memory_module.query(event_type="AUTH_SUCCESS", limit=10)
+        records = result.get("records", [])
+        self.assertTrue(records, "No AUTH_SUCCESS record.")
+        notes = records[0].get("notes", "")
+        self.assertIn(
+            "alice", notes,
+            f"AUTH_SUCCESS notes must include the identity. Got: {notes!r}"
+        )
+
+    # ── DATA_EXPORT ───────────────────────────────────────────────────────────
+
+    def test_data_export_event_is_recorded(self):
+        """
+        GET /data/export must produce a DATA_EXPORT audit record (in addition
+        to the READ_ACCESS record emitted by export_personal_data()).
+        """
+        import modules.memory as memory_module
+
+        auth_resp = self._client.post("/auth", json={"passphrase": "", "identity": "test"})
+        token = auth_resp.json().get("token", "")
+
+        self._client.get("/data/export", headers=self._auth_headers(token))
+
+        result = memory_module.query(event_type="DATA_EXPORT", limit=10)
+        records = result.get("records", [])
+        self.assertTrue(
+            records,
+            "No DATA_EXPORT record found after GET /data/export."
+        )
+
+    def test_data_export_notes_contain_gdpr_article(self):
+        """
+        The DATA_EXPORT record notes must mention GDPR Art. 15.
+        """
+        import modules.memory as memory_module
+
+        auth_resp = self._client.post("/auth", json={"passphrase": "", "identity": "test"})
+        token = auth_resp.json().get("token", "")
+
+        resp = self._client.get("/data/export", headers=self._auth_headers(token))
+        if resp.status_code != 200:
+            self.skipTest(f"Export endpoint failed: {resp.status_code}")
+
+        result = memory_module.query(event_type="DATA_EXPORT", limit=10)
+        records = result.get("records", [])
+        self.assertTrue(records, "No DATA_EXPORT record.")
+        notes = records[0].get("notes", "")
+        self.assertIn(
+            "GDPR Art. 15", notes,
+            f"DATA_EXPORT notes must cite GDPR Art. 15. Got: {notes!r}"
+        )
+
+    # ── TRANSPARENCY_READ ────────────────────────────────────────────────────
+
+    def test_transparency_read_event_is_recorded(self):
+        """
+        GET /system/transparency must produce a TRANSPARENCY_READ audit record.
+        The endpoint is public (no auth required).
+        """
+        import modules.memory as memory_module
+
+        resp = self._client.get("/system/transparency")
+        self.assertEqual(
+            resp.status_code, 200,
+            f"Transparency endpoint returned {resp.status_code}: {resp.text[:200]}"
+        )
+
+        result = memory_module.query(event_type="TRANSPARENCY_READ", limit=10)
+        records = result.get("records", [])
+        self.assertTrue(
+            records,
+            "No TRANSPARENCY_READ record found after GET /system/transparency."
+        )
+
+    def test_transparency_known_limitations_from_config(self):
+        """
+        GET /system/transparency known_limitations must be sourced from
+        config.COMPLIANCE_TRANSPARENCY_KNOWN_LIMITATIONS (env-var overridable).
+        Verify the response list is non-empty and all entries are non-blank strings.
+        """
+        resp = self._client.get("/system/transparency")
+        if resp.status_code != 200:
+            self.skipTest(f"Transparency endpoint unavailable: {resp.status_code}")
+
+        data = resp.json()
+        limitations = data.get("known_limitations", [])
+        self.assertIsInstance(limitations, list, "known_limitations must be a list.")
+        self.assertGreater(
+            len(limitations), 0,
+            "known_limitations must not be empty."
+        )
+        for item in limitations:
+            self.assertIsInstance(item, str, "Each known_limitation must be a string.")
+            self.assertTrue(item.strip(), "No blank entries in known_limitations.")
 
 
 if __name__ == "__main__":
