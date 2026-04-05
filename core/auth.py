@@ -346,10 +346,10 @@ class LocalAuthManager:
                 # A-5: Do not reveal how many attempts triggered lockout.
                 reason = "Too many failed attempts. Please try again later."
             else:
-                # A-5: Do not disclose remaining attempt count — it gives
-                # attackers a precise signal to manage their guessing budget.
-                # Mention "attempt" so users know repeated failures lead to lockout.
-                reason = "Incorrect passphrase. Too many failed attempts will lock this account."
+                # A-5: Do not disclose remaining attempt count or use the word
+                # "attempt" — it gives attackers a signal to manage their
+                # guessing budget. Generic message only.
+                reason = "Incorrect passphrase."
 
             if delay > 0:
                 time.sleep(delay)

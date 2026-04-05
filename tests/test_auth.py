@@ -138,11 +138,11 @@ class TestAuthentication(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_failed_attempt_count_shown_in_reason(self):
-        """Failed attempt reason mentions remaining attempts."""
+        """Failed auth returns a non-empty generic reason (A-5: no attempt count disclosed)."""
         self.manager.setup("correct-horse-battery-staple", "blue bicycle")
         result = self.manager.authenticate(passphrase_input="wrong")
         self.assertFalse(result.success)
-        self.assertIn("attempt", result.reason.lower())
+        self.assertTrue(result.reason, "Failed auth must return a non-empty reason string.")
 
     # ------------------------------------------------------------------
     # INPUT VALIDATION
