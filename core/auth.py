@@ -348,7 +348,8 @@ class LocalAuthManager:
             else:
                 # A-5: Do not disclose remaining attempt count — it gives
                 # attackers a precise signal to manage their guessing budget.
-                reason = "Incorrect passphrase."
+                # Mention "attempt" so users know repeated failures lead to lockout.
+                reason = "Incorrect passphrase. Too many failed attempts will lock this account."
 
             if delay > 0:
                 time.sleep(delay)
