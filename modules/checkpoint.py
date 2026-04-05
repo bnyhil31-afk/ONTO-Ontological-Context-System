@@ -148,7 +148,7 @@ def run(surface: dict, enriched_package: dict) -> dict:
         record_id = memory.record(
             event_type="CHECKPOINT",
             input_data=input_text,
-            output="AUTO_PROCEED",
+            output="AUTO_PROCEED|GDPR_22_DISCLOSED",   # machine-parseable; query-able
             human_decision="AUTO_PROCEED",
             confidence=confidence,
             notes=(

@@ -362,6 +362,31 @@ class ONTOConfig:
         value = os.environ.get("ONTO_COMPLIANCE_EXPORT_ALL", "false")
         return value.lower() in ("true", "1", "yes")
 
+    @property
+    def COMPLIANCE_TRANSPARENCY_KNOWN_LIMITATIONS(self) -> str:
+        """
+        Pipe-delimited list of known system limitations for GET /system/transparency.
+        Operators may add deployment-specific caveats without a code change.
+        Default: hardcoded list describing Stage 1 heuristic constraints.
+        Set ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS to override or extend.
+
+        EU AI Act Art. 13(1)(b) — providers must disclose known limitations.
+
+        Format: "limitation one|limitation two|limitation three"
+        Each item is trimmed and returned as a separate string in the response.
+        """
+        default = (
+            "Classification is keyword-heuristic only — not ML-based at Stage 1."
+            "|CRISIS detection is keyword-based — not a clinical assessment tool."
+            "|Graph relationships are derived from inputs, not verified ground truth."
+            "|Consent ledger is not yet active — deferred to Stage 2."
+            "|Single-user deployment only — no RBAC at Stage 1."
+            "|Right to correct is not supported (append-only audit trail)."
+            "|Bias monitoring is designed but not yet implemented (Stage 2)."
+            "|Field-level encryption for HIPAA PHI is deferred to Stage 2."
+        )
+        return os.environ.get("ONTO_COMPLIANCE_TRANSPARENCY_LIMITATIONS", default)
+
     # STAGE-2: add COMPLIANCE_CONSENT_LEDGER_URL property (reserved, empty default)
 
     # ─────────────────────────────────────────────────────────────────────────
