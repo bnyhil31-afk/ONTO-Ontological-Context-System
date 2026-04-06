@@ -74,6 +74,11 @@ class FederationManager:
                 from api.federation import _ZEROCONF_AVAILABLE
                 if not _ZEROCONF_AVAILABLE:
                     return False
+            # P2P stage also needs kademlia
+            if _cfg.FEDERATION_STAGE == "p2p":
+                from api.federation import _KADEMLIA_AVAILABLE
+                if not _KADEMLIA_AVAILABLE:
+                    return False
             return True
         except Exception:
             return False
@@ -140,7 +145,13 @@ class FederationManager:
         self._node_did = did
 
         # 5. Create the adapter for the configured stage
-        if _cfg.FEDERATION_STAGE == "intranet":
+        if _cfg.FEDERATION_STAGE == "p2p":
+            from api.federation.p2p import P2PAdapter
+            adapter = P2PAdapter(did, private_key)
+        elif _cfg.FEDERATION_STAGE == "internet":
+            from api.federation.internet import InternetAdapter
+            adapter = InternetAdapter(did, private_key)
+        elif _cfg.FEDERATION_STAGE == "intranet":
             from api.federation.intranet import IntranetAdapter
             adapter = IntranetAdapter(did, private_key)
         else:

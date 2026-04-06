@@ -161,6 +161,129 @@ CERT_LIFETIME_DAYS: int = int(
 )
 
 # ---------------------------------------------------------------------------
+# TLS / mTLS (internet + p2p stages)
+# Required when FEDERATION_STAGE=internet or p2p.
+# If cert/key files don't exist, InternetAdapter auto-generates a
+# self-signed certificate and writes an audit event.
+# ---------------------------------------------------------------------------
+
+# Require mutual TLS (both sides present certificates).
+# Default: true — most restrictive option.
+MTLS_REQUIRED: bool = (
+    os.getenv("ONTO_FED_MTLS_REQUIRED", "true").lower() == "true"
+)
+
+# Path to this node's TLS certificate (PEM format).
+TLS_CERT_PATH: str = os.path.expanduser(
+    os.getenv("ONTO_FED_TLS_CERT_PATH", "~/.onto/federation/node.crt")
+)
+
+# Path to this node's TLS private key (PEM format). Mode 0o600 required.
+TLS_KEY_PATH: str = os.path.expanduser(
+    os.getenv("ONTO_FED_TLS_KEY_PATH", "~/.onto/federation/node.pem")
+)
+
+# Path to CA bundle for peer certificate verification.
+# Empty = use system CA store (acceptable for CA-signed certs;
+# TOFU pinning in peer_store.py provides additional verification).
+TLS_CA_BUNDLE: str = os.path.expanduser(
+    os.getenv("ONTO_FED_TLS_CA_BUNDLE", "")
+)
+
+# ---------------------------------------------------------------------------
+# REGULATORY PROFILES (internet + p2p stages)
+# Comma-separated profile names. Empty = no regulatory profile (default).
+# Valid values: HIPAA, GDPR, FERPA, GLBA
+# Profiles are ADDITIVE RESTRICTIONS ONLY — they can only further restrict
+# what the safety gates already enforce. They never override absolute barriers.
+# Example: ONTO_FED_REGULATORY_PROFILES=HIPAA,GDPR
+# ---------------------------------------------------------------------------
+
+_profiles_raw: str = os.getenv("ONTO_FED_REGULATORY_PROFILES", "")
+REGULATORY_PROFILES: list = [
+    p.strip().upper() for p in _profiles_raw.split(",") if p.strip()
+]
+
+VALID_REGULATORY_PROFILES: FrozenSet[str] = frozenset(
+    {"HIPAA", "GDPR", "FERPA", "GLBA"}
+)
+
+# ---------------------------------------------------------------------------
+# P2P / KADEMLIA DHT (p2p stage)
+# ---------------------------------------------------------------------------
+
+# UDP port for the Kademlia DHT node (separate from the federation HTTP port).
+DHT_PORT: int = int(os.getenv("ONTO_FED_DHT_PORT", "7701"))
+
+# Comma-separated bootstrap node addresses: "host:port,host:port"
+# Required when FEDERATION_STAGE=p2p.
+_bootstrap_raw: str = os.getenv("ONTO_FED_DHT_BOOTSTRAP_NODES", "")
+DHT_BOOTSTRAP_NODES: list = [
+    n.strip() for n in _bootstrap_raw.split(",") if n.strip()
+]
+
+# Sybil resistance proof-of-work difficulty (leading zero bits).
+# 0 = disabled. 4 = default (~65000 hashes per identity). 8 = strict.
+SYBIL_POW_DIFFICULTY: int = int(
+    os.getenv("ONTO_FED_SYBIL_POW_DIFFICULTY", "4")
+)
+
+# ---------------------------------------------------------------------------
+# NETWORK RESILIENCE (internet + p2p stages)
+# Controls adaptive timeouts, jitter-aware retry, and connection quality
+# tracking. These settings apply regardless of network environment —
+# they protect against real-world conditions: jitter, lag, packet loss.
+# ---------------------------------------------------------------------------
+
+# Maximum number of attempts per outbound request (initial + retries).
+# 1 = no retry. 3 = default (initial + 2 retries). Set to 1 for environments
+# where retries are undesirable (e.g., idempotency not guaranteed).
+RETRY_MAX_ATTEMPTS: int = int(
+    os.getenv("ONTO_FED_RETRY_MAX_ATTEMPTS", "3")
+)
+
+# Base delay for exponential backoff (milliseconds).
+# Full jitter: delay = random(0, min(MAX_DELAY_MS, BASE_DELAY_MS × 2^attempt))
+# This prevents thundering herd when many nodes retry a recovering peer.
+RETRY_BASE_DELAY_MS: int = int(
+    os.getenv("ONTO_FED_RETRY_BASE_DELAY_MS", "500")
+)
+
+# Maximum retry delay cap (milliseconds).
+# Prevents excessive wait when backoff exponent grows large.
+RETRY_MAX_DELAY_MS: int = int(
+    os.getenv("ONTO_FED_RETRY_MAX_DELAY_MS", "10000")
+)
+
+# Baseline request timeout (seconds) before jitter adjustment.
+# The adaptive timeout formula is: base + 4 × jitter_avg
+# This matches RFC 6298 (TCP RTO calculation) adapted for application level.
+TIMEOUT_BASE_SECS: float = float(
+    os.getenv("ONTO_FED_TIMEOUT_BASE_SECS", "10.0")
+)
+
+# Maximum adaptive timeout ceiling (seconds).
+# No matter how high jitter is, timeouts are capped here to prevent
+# threads from blocking indefinitely on a slow or malicious peer.
+TIMEOUT_MAX_SECS: float = float(
+    os.getenv("ONTO_FED_TIMEOUT_MAX_SECS", "30.0")
+)
+
+# Minimum quality score to prioritize a peer in discovery results.
+# Peers below this score are still contacted but ranked lower.
+# The circuit breaker (not this threshold) handles actual blocking.
+# Range: 0.0 (accept any quality) – 1.0 (perfect only). Default: 0.10.
+QUALITY_MIN_SCORE: float = float(
+    os.getenv("ONTO_FED_QUALITY_MIN_SCORE", "0.10")
+)
+
+# Rolling window size for per-peer RTT and jitter samples.
+# Larger = more stable estimates; smaller = faster adaptation to changes.
+RTT_WINDOW: int = int(
+    os.getenv("ONTO_FED_RTT_WINDOW", "20")
+)
+
+# ---------------------------------------------------------------------------
 # VALIDATION
 # ---------------------------------------------------------------------------
 
@@ -176,12 +299,6 @@ def validate() -> list:
         errors.append(
             f"Invalid ONTO_FEDERATION_STAGE '{FEDERATION_STAGE}'. "
             f"Valid values: {sorted(VALID_STAGES)}"
-        )
-
-    if FEDERATION_STAGE in ("internet", "p2p"):
-        errors.append(
-            f"Stage '{FEDERATION_STAGE}' is not available in Phase 3. "
-            f"Use 'local' or 'intranet'."
         )
 
     if not 0.0 <= INBOUND_TRUST <= 1.0:
@@ -220,6 +337,60 @@ def validate() -> list:
             f"got {MAX_MSGS_PER_PEER_PER_MIN}."
         )
 
+    for profile in REGULATORY_PROFILES:
+        if profile not in VALID_REGULATORY_PROFILES:
+            errors.append(
+                f"Unknown regulatory profile '{profile}'. "
+                f"Valid values: {sorted(VALID_REGULATORY_PROFILES)}"
+            )
+
+    if FEDERATION_STAGE == "p2p" and not DHT_BOOTSTRAP_NODES:
+        errors.append(
+            "P2P stage requires at least one bootstrap node. "
+            "Set ONTO_FED_DHT_BOOTSTRAP_NODES=host:port"
+        )
+
+    if not 0 <= SYBIL_POW_DIFFICULTY <= 20:
+        errors.append(
+            f"ONTO_FED_SYBIL_POW_DIFFICULTY must be in [0, 20], "
+            f"got {SYBIL_POW_DIFFICULTY}."
+        )
+
+    if RETRY_MAX_ATTEMPTS < 1:
+        errors.append(
+            f"ONTO_FED_RETRY_MAX_ATTEMPTS must be >= 1, "
+            f"got {RETRY_MAX_ATTEMPTS}."
+        )
+
+    if RETRY_BASE_DELAY_MS < 1:
+        errors.append(
+            f"ONTO_FED_RETRY_BASE_DELAY_MS must be >= 1, "
+            f"got {RETRY_BASE_DELAY_MS}."
+        )
+
+    if TIMEOUT_BASE_SECS <= 0:
+        errors.append(
+            f"ONTO_FED_TIMEOUT_BASE_SECS must be > 0, "
+            f"got {TIMEOUT_BASE_SECS}."
+        )
+
+    if TIMEOUT_MAX_SECS < TIMEOUT_BASE_SECS:
+        errors.append(
+            f"ONTO_FED_TIMEOUT_MAX_SECS ({TIMEOUT_MAX_SECS}) must be >= "
+            f"ONTO_FED_TIMEOUT_BASE_SECS ({TIMEOUT_BASE_SECS})."
+        )
+
+    if not 0.0 <= QUALITY_MIN_SCORE <= 1.0:
+        errors.append(
+            f"ONTO_FED_QUALITY_MIN_SCORE must be in [0.0, 1.0], "
+            f"got {QUALITY_MIN_SCORE}."
+        )
+
+    if RTT_WINDOW < 2:
+        errors.append(
+            f"ONTO_FED_RTT_WINDOW must be >= 2, got {RTT_WINDOW}."
+        )
+
     return errors
 
 
@@ -243,4 +414,17 @@ def summary() -> dict:
         "max_msgs_per_peer_min":    MAX_MSGS_PER_PEER_PER_MIN,
         "static_peer_count":        len(STATIC_PEERS),
         "cert_lifetime_days":       CERT_LIFETIME_DAYS,
+        "mtls_required":            MTLS_REQUIRED,
+        "tls_cert_path":            TLS_CERT_PATH,
+        "regulatory_profiles":      REGULATORY_PROFILES,
+        "dht_port":                 DHT_PORT,
+        "dht_bootstrap_count":      len(DHT_BOOTSTRAP_NODES),
+        "sybil_pow_difficulty":     SYBIL_POW_DIFFICULTY,
+        "retry_max_attempts":       RETRY_MAX_ATTEMPTS,
+        "retry_base_delay_ms":      RETRY_BASE_DELAY_MS,
+        "retry_max_delay_ms":       RETRY_MAX_DELAY_MS,
+        "timeout_base_secs":        TIMEOUT_BASE_SECS,
+        "timeout_max_secs":         TIMEOUT_MAX_SECS,
+        "quality_min_score":        QUALITY_MIN_SCORE,
+        "rtt_window":               RTT_WINDOW,
     }

@@ -49,6 +49,13 @@ try:
 except ImportError:
     _CRDTS_AVAILABLE = False
 
+# Phase 4 — Kademlia DHT (required for p2p stage)
+try:
+    import kademlia as _kademlia    # type: ignore  # noqa: F401
+    _KADEMLIA_AVAILABLE = True
+except ImportError:
+    _KADEMLIA_AVAILABLE = False
+
 # Phase 3 is available when zeroconf + grpcio are installed
 _FEDERATION_DEPS_AVAILABLE = _ZEROCONF_AVAILABLE and _GRPCIO_AVAILABLE
 
@@ -59,9 +66,10 @@ def get_deps_status() -> dict:
     Useful for operator diagnostics and onto_status reporting.
     """
     return {
-        "zeroconf": _ZEROCONF_AVAILABLE,    # required (Phase 3)
-        "grpcio":   _GRPCIO_AVAILABLE,      # required (Phase 3)
+        "zeroconf": _ZEROCONF_AVAILABLE,    # required (Phase 3, intranet stage)
+        "grpcio":   _GRPCIO_AVAILABLE,      # required (Phase 3+)
         "crdts":    _CRDTS_AVAILABLE,       # optional (Phase 4)
+        "kademlia": _KADEMLIA_AVAILABLE,    # required (p2p stage)
     }
 
 
@@ -81,10 +89,15 @@ def require_deps(stage: str = "local") -> None:
     if stage == "intranet" and not _ZEROCONF_AVAILABLE:
         missing.append("zeroconf")
 
+    if stage == "p2p" and not _KADEMLIA_AVAILABLE:
+        missing.append("kademlia")
+
     if missing:
         install = " ".join(missing)
         if "grpcio" in missing:
             install += " grpcio-tools"
+        if "kademlia" in missing:
+            install = install.strip() + " kademlia>=2.2.2"
         raise FederationDepsError(
             f"Federation stage '{stage}' requires: {', '.join(missing)}.\n"
             f"Run: pip install {install}"

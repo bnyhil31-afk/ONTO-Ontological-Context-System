@@ -36,6 +36,12 @@ fastmcp>=2.0.0; python_version >= "3.10"
 # ── FEDERATION (optional) ────────────────────────────────────────────────────
 # Required for Phase 3 federation between ONTO nodes.
 # Skip if running a single node.
-zeroconf>=0.131.0
-grpcio>=1.60.0
-grpcio-tools>=1.60.0
+zeroconf>=0.131.0           # intranet stage: mDNS peer discovery
+grpcio>=1.60.0              # all stages: gRPC transport (Phase 4 upgrade path)
+grpcio-tools>=1.60.0        # all stages: protocol buffer tools
+
+# ── FEDERATION — INTERNET + P2P STAGES (optional) ────────────────────────────
+# Required for internet-stage and p2p-stage federation.
+# internet stage: cryptography package is already listed above (encryption).
+# p2p stage: kademlia DHT for decentralized peer discovery.
+kademlia>=2.2.2             # p2p stage: Kademlia DHT peer discovery
