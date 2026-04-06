@@ -495,22 +495,29 @@ class TestInternetAdapterRegulatoryProfiles(_InternetBase):
         self.assertTrue(ok, f"GLBA should permit with safeguards: {reason}")
 
     def test_registry_runs_all_profiles(self):
-        """Registry applies all loaded profiles (logical AND)."""
+        """Registry applies all loaded profiles (logical AND).
+
+        Uses is_personal=True WITHOUT phi_flag so that:
+          - HIPAA: no phi_flag → HIPAA passes (nothing to gate on)
+          - GDPR: is_personal=True + no gdpr_dpa_confirmed → GDPR blocks
+        This verifies that GDPR gates work independently of HIPAA.
+        """
         from api.federation.regulatory import RegulatoryProfileRegistry
         reg = RegulatoryProfileRegistry()
         reg.load(["HIPAA", "GDPR"])
 
-        # Peer has BAA but not DPA — GDPR should block
+        # Personal data (is_personal=True) but no PHI flag.
+        # HIPAA has no trigger without phi_flag, so it passes.
+        # GDPR blocks because gdpr_dpa_confirmed is absent (Art. 28 DPA).
         peer = self._peer(
             residency="DE",
             capabilities={
                 "max_classification": 2,
-                "baa_confirmed": True,
                 # No gdpr_dpa_confirmed
             },
         )
-        ok, reason = reg.check_outbound({"phi_flag": True, "is_personal": True}, peer)
-        self.assertFalse(ok, "GDPR gate in registry must block even if HIPAA passes")
+        ok, reason = reg.check_outbound({"is_personal": True}, peer)
+        self.assertFalse(ok, "GDPR gate in registry must block personal data without DPA")
         self.assertIn("GDPR", reason)
 
     def test_registry_first_blocking_profile_wins(self):

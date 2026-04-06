@@ -362,10 +362,18 @@ class TestP2PAdapterDiscovery(_P2PBase):
         adapter._dht_node = MagicMock()
         adapter._dht_loop = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_future:
+        with patch("asyncio.run_coroutine_threadsafe") as mock_rcts:
             mock_result = MagicMock()
             mock_result.result.return_value = own_announcement
-            mock_future.return_value = mock_result
+
+            # Close the coroutine so Python doesn't warn "never awaited".
+            # asyncio.run_coroutine_threadsafe receives a coroutine object;
+            # the mock never schedules it, so we must close it explicitly.
+            def _close_coro_and_return(coro, loop):
+                coro.close()
+                return mock_result
+
+            mock_rcts.side_effect = _close_coro_and_return
 
             peers = adapter.discover()
 
